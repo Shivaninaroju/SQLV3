@@ -5,8 +5,7 @@ python-multipart
 python-dotenv
 pyjwt
 bcrypt
-google-generativeai
-axios
+google-genai
 requests
 pydantic
 email-validator

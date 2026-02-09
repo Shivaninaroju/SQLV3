@@ -1,0 +1,15 @@
+{
+    "watch": [
+        "."
+    ],
+    "ext": "py",
+    "ignore": [
+        "data/*",
+        "uploads/*",
+        "__pycache__/*",
+        "venv/*",
+        "node_modules/*",
+        "backend.log"
+    ],
+    "delay": 2000
+}

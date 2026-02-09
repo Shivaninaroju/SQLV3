@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 import socketio
 
 from database_manager import db_manager
-from services.nlp_to_sql_v2 import nlp_to_sql
+from services.premium_nlp_service import premium_nlp_service
 
 # Configuration
 load_dotenv()
@@ -287,6 +287,23 @@ async def get_database_schema(database_id: int, refresh: bool = False, current_u
     return {"schema": schema}
 
 
+@app.get("/api/database/{database_id}/analytics")
+async def get_database_analytics(database_id: int, current_user: dict = Depends(get_current_user)):
+    schema_row = db_manager.get_system_row(
+        "SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1",
+        (database_id,)
+    )
+    if not schema_row:
+        return {"summary": {"tableCount": 0, "tables": []}}
+    
+    schema = json.loads(schema_row["schema_json"])
+    return {"summary": {
+        "tableCount": len(schema.get("tables", [])),
+        "tables": schema.get("tables", [])
+    }}
+
+
+
 @app.get("/api/database/{database_id}/download")
 async def download_database(database_id: int, current_user: dict = Depends(get_current_user)):
     from fastapi.responses import FileResponse
@@ -338,9 +355,14 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
     )
     if not schema_row:
         raise HTTPException(status_code=404, detail="Schema not found")
-        
+
     schema = json.loads(schema_row["schema_json"])
-    result = await nlp_to_sql.convert_to_sql(data.query, schema, data.conversationHistory, data.selectedTable)
+    result = await premium_nlp_service.process_query(
+        data.query,
+        schema,
+        data.conversationHistory,
+        data.selectedTable
+    )
     return result
 
 @app.get("/api/query/suggestions/{database_id}")
@@ -426,7 +448,18 @@ async def get_history(database_id: int, current_user: dict = Depends(get_current
 @app.get("/api/history/{database_id}/stats")
 async def get_history_stats(database_id: int, current_user: dict = Depends(get_current_user)):
     total = db_manager.get_system_row("SELECT COUNT(*) as count FROM commits WHERE database_id = ?", (database_id,))
-    return {"totalCommits": total["count"] if total else 0}
+    
+    # Get operation distribution
+    ops = db_manager.get_system_rows(
+        "SELECT operation_type, COUNT(*) as count FROM commits WHERE database_id = ? GROUP BY operation_type",
+        (database_id,)
+    )
+    
+    return {
+        "totalCommits": total["count"] if total else 0,
+        "operationStats": ops
+    }
+
 
 
 # --- COLLABORATION ROUTES ---
@@ -490,4 +523,10 @@ async def stop_typing(sid, database_id):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(socket_app, host="0.0.0.0", port=5000)
+    port = int(os.getenv("PORT", 5000))
+    print(f"Starting CollabSQL Backend on port {port}...")
+    uvicorn.run(socket_app, host="0.0.0.0", port=port, log_level="info")
+
+
+
+
