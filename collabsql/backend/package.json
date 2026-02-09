@@ -4,9 +4,9 @@
   "description": "Backend for CollabSQL - Natural Language Database Collaboration Platform",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "init-db": "node scripts/initDatabase.js"
+    "start": ".\\venv\\Scripts\\python.exe main.py",
+    "dev": "nodemon --exec .\\venv\\Scripts\\python.exe main.py --ext py",
+    "init-db": ".\\venv\\Scripts\\python.exe database_manager.py"
   },
   "keywords": [
     "sql",

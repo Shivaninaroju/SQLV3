@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-socketio
+python-multipart
+python-dotenv
+pyjwt
+bcrypt
+google-generativeai
+axios
+requests
+pydantic
+email-validator
+jinja2

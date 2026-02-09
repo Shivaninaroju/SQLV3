@@ -19,9 +19,6 @@ const errorHandler = (err, req, res, next) => {
   } else if (err.code === 'SQLITE_CONSTRAINT') {
     statusCode = 409;
     message = 'Database constraint violation';
-  } else if (err.code === 'SQLITE_ERROR' && err.message && err.message.includes('no such table')) {
-    statusCode = 503;
-    message = 'Database not ready. Please restart the backend server.';
   } else if (err.code === 'LIMIT_FILE_SIZE') {
     statusCode = 413;
     message = 'File size exceeds limit';

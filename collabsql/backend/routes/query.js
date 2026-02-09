@@ -5,18 +5,6 @@ const nlpToSql = require('../services/nlpToSql');
 const { authenticateToken, checkDatabaseAccess } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
-// In-memory schema cache (TTL 60s) to avoid redundant DB reads and JSON parse
-const SCHEMA_CACHE_TTL_MS = 60 * 1000;
-const schemaCache = new Map();
-function getCachedSchema(databaseId) {
-  const entry = schemaCache.get(databaseId);
-  if (!entry || Date.now() - entry.ts > SCHEMA_CACHE_TTL_MS) return null;
-  return entry.schema;
-}
-function setCachedSchema(databaseId, schema) {
-  schemaCache.set(databaseId, { schema, ts: Date.now() });
-}
-
 // Process natural language query
 router.post('/nl', authenticateToken, checkDatabaseAccess('viewer'), asyncHandler(async (req, res) => {
   const { databaseId, query, conversationHistory, selectedTable } = req.body;
@@ -35,19 +23,17 @@ router.post('/nl', authenticateToken, checkDatabaseAccess('viewer'), asyncHandle
     return res.status(404).json({ error: 'Database not found' });
   }
 
-  // Get schema (from memory cache or DB)
-  let schema = getCachedSchema(databaseId);
-  if (!schema) {
-    const schemaRow = await dbManager.getSystemRow(
-      'SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1',
-      [databaseId]
-    );
-    if (!schemaRow) {
-      return res.status(500).json({ error: 'Schema not found. Please refresh the database.' });
-    }
-    schema = JSON.parse(schemaRow.schema_json);
-    setCachedSchema(databaseId, schema);
+  // Get schema
+  const schemaCache = await dbManager.getSystemRow(
+    'SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1',
+    [databaseId]
+  );
+
+  if (!schemaCache) {
+    return res.status(500).json({ error: 'Schema not found. Please refresh the database.' });
   }
+
+  const schema = JSON.parse(schemaCache.schema_json);
 
   // Convert NL to SQL
   const result = await nlpToSql.convertToSQL(query, schema, conversationHistory || [], selectedTable);
@@ -84,25 +70,6 @@ router.post('/execute', authenticateToken, checkDatabaseAccess('viewer'), asyncH
     return res.status(404).json({ error: 'Database not found' });
   }
 
-  // Validate query against schema before execution (use cache when available)
-  let schemaForValidation = getCachedSchema(databaseId);
-  if (!schemaForValidation) {
-    const schemaRow = await dbManager.getSystemRow(
-      'SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1',
-      [databaseId]
-    );
-    if (schemaRow) {
-      schemaForValidation = JSON.parse(schemaRow.schema_json);
-      setCachedSchema(databaseId, schemaForValidation);
-    }
-  }
-  if (schemaForValidation) {
-    const validation = validateQueryAgainstSchema(query, queryType, schemaForValidation);
-    if (!validation.valid) {
-      return res.status(400).json({ error: validation.error });
-    }
-  }
-
   // Get snapshot before (for write operations)
   let snapshotBefore = null;
   if (writeOperations.includes(queryType)) {
@@ -119,16 +86,6 @@ router.post('/execute', authenticateToken, checkDatabaseAccess('viewer'), asyncH
       result = await dbManager.getUserRows(userDb, query);
     } else {
       result = await dbManager.runUserQuery(userDb, query);
-      // UPDATE/DELETE with zero rows matched → abort with clear message
-      if ((queryType === 'UPDATE' || queryType === 'DELETE') && result.changes === 0) {
-        await dbManager.closeDb(userDb);
-        return res.status(400).json({
-          error: 'No matching records found.',
-          success: false,
-          queryType,
-          rowsAffected: 0
-        });
-      }
     }
 
     // Get snapshot after (for write operations)
@@ -260,48 +217,6 @@ async function captureSnapshot(dbPath, query) {
     console.error('Snapshot error:', error);
     return null;
   }
-}
-
-// Validate that query only references existing tables and columns
-function validateQueryAgainstSchema(query, queryType, schema) {
-  const tableNames = new Set((schema.tables || []).map(t => t.name.toUpperCase()));
-  const tablesInSchema = schema.tables || [];
-
-  const fromMatch = query.match(/FROM\s+["']?(\w+)["']?/i);
-  const intoMatch = query.match(/INTO\s+["']?(\w+)["']?/i);
-  const updateMatch = query.match(/UPDATE\s+["']?(\w+)["']?/i);
-  const joinMatches = query.matchAll(/JOIN\s+["']?(\w+)["']?/gi);
-
-  const mentionedTables = [];
-  if (fromMatch) mentionedTables.push(fromMatch[1]);
-  if (intoMatch) mentionedTables.push(intoMatch[1]);
-  if (updateMatch) mentionedTables.push(updateMatch[1]);
-  for (const m of joinMatches) mentionedTables.push(m[1]);
-
-  for (const t of mentionedTables) {
-    if (!tableNames.has(t.toUpperCase())) {
-      return { valid: false, error: `Table "${t}" not found in database schema.` };
-    }
-  }
-
-  // For INSERT, validate column names
-  const insertColMatch = query.match(/INSERT\s+INTO\s+["']?\w+["']?\s*\(([^)]+)\)/i);
-  if (insertColMatch) {
-    const tableMatch = query.match(/INSERT\s+INTO\s+["']?(\w+)["']?/i);
-    const tableName = tableMatch ? tableMatch[1] : null;
-    const table = tablesInSchema.find(t => t.name.toUpperCase() === tableName?.toUpperCase());
-    if (table) {
-      const colNames = new Set(table.columns.map(c => c.name.toUpperCase()));
-      const cols = insertColMatch[1].split(',').map(s => s.trim().replace(/^"|"$/g, ''));
-      for (const c of cols) {
-        if (!colNames.has(c.toUpperCase())) {
-          return { valid: false, error: `Column "${c}" not found in table "${tableName}".` };
-        }
-      }
-    }
-  }
-
-  return { valid: true };
 }
 
 // Helper function to extract affected tables

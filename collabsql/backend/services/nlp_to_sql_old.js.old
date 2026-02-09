@@ -1,0 +1,1416 @@
+const axios = require('axios');
+
+/**
+ * NLP TO SQL CONVERTER V3
+ *
+ * Major improvements:
+ * - LIKE/pattern matching for "starts with", "ends with", "contains"
+ * - Specific column selection (not always SELECT *)
+ * - selectedTable is respected as default context
+ * - DELETE/UPDATE with value-based WHERE from natural language
+ * - Better conversational handling for non-SQL questions
+ * - CREATE TABLE support
+ * - Aggregate functions: SUM, AVG, MIN, MAX, COUNT with GROUP BY
+ * - ORDER BY, DISTINCT, BETWEEN support
+ * - Follow-up context from conversation history
+ */
+
+class NLPToSQLV3 {
+  constructor() {
+    this.geminiApiKey = process.env.GEMINI_API_KEY;
+    this.useLocalModel = process.env.USE_LOCAL_MODEL === 'true';
+    this.localModelUrl = process.env.LOCAL_MODEL_URL || 'http://localhost:11434';
+  }
+
+  async convertToSQL(userQuery, schema, conversationHistory = [], selectedTable = null) {
+    try {
+      if (this.useLocalModel) {
+        return await this.useLocalLLM(userQuery, schema, conversationHistory);
+      } else if (this.geminiApiKey && this.geminiApiKey !== 'your-gemini-api-key-here' && this.geminiApiKey.length > 20) {
+        return await this.useGemini(userQuery, schema, conversationHistory);
+      }
+      return await this.useEnhancedParser(userQuery, schema, selectedTable, conversationHistory);
+    } catch (error) {
+      console.error('NLP to SQL error:', error.message);
+      return await this.useEnhancedParser(userQuery, schema, selectedTable, conversationHistory);
+    }
+  }
+
+  // ──────────────────────────────────────────
+  // ENHANCED PARSER
+  // ──────────────────────────────────────────
+  async useEnhancedParser(userQuery, schema, selectedTable = null, conversationHistory = []) {
+    const lowerQuery = userQuery.toLowerCase().trim();
+    const queryClass = this.classifyQuery(lowerQuery, userQuery);
+
+    switch (queryClass.type) {
+      case 'CONVERSATIONAL':
+        return this.handleConversational(userQuery, lowerQuery, queryClass, schema);
+      case 'SCHEMA_INFO':
+        return this.handleSchemaInfo(userQuery, lowerQuery, schema, queryClass, selectedTable);
+      case 'DDL':
+        return this.handleDDL(userQuery, lowerQuery, schema, queryClass, selectedTable);
+      case 'DML_READ':
+        return this.handleSelect(userQuery, lowerQuery, schema, queryClass, selectedTable);
+      case 'DML_WRITE_INSERT':
+        return this.handleInsert(userQuery, lowerQuery, schema, selectedTable);
+      case 'DML_WRITE_UPDATE':
+        return this.handleUpdate(userQuery, lowerQuery, schema, selectedTable);
+      case 'DML_WRITE_DELETE':
+        return this.handleDelete(userQuery, lowerQuery, schema, selectedTable, conversationHistory);
+      default:
+        return this.handleUnknown(userQuery, schema);
+    }
+  }
+
+  // ──────────────────────────────────────────
+  // QUERY CLASSIFIER
+  // ──────────────────────────────────────────
+  classifyQuery(lowerQuery, originalQuery) {
+    // Conversational - greetings, thanks, general questions
+    if (lowerQuery.match(/^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|bye|good morning|good evening|good night|sup|howdy)[\s!.?]*$/)) {
+      return { type: 'CONVERSATIONAL', subtype: 'GREETING' };
+    }
+
+    // General knowledge / non-SQL questions
+    if (lowerQuery.match(/^(what is|what are|who is|who are|how does|how do|why is|why do|explain|define|tell me about|describe what)\s+(?!.*\b(table|column|schema|constraint|key|database|row|record)\b)/)) {
+      return { type: 'CONVERSATIONAL', subtype: 'GENERAL_QUESTION' };
+    }
+
+    // Help queries about the tool
+    if (lowerQuery.match(/^(help|what can you do|how to use|can you)/)) {
+      if (lowerQuery.includes('constraint') || lowerQuery.includes('key') || lowerQuery.includes('column') || lowerQuery.includes('table')) {
+        return { type: 'SCHEMA_INFO', subtype: 'CONSTRAINTS' };
+      }
+      return { type: 'CONVERSATIONAL', subtype: 'HELP' };
+    }
+
+    // Schema information queries
+    if (lowerQuery.match(/show.*constraint|list.*constraint|what.*constraint/)) {
+      return { type: 'SCHEMA_INFO', subtype: 'CONSTRAINTS' };
+    }
+    if (lowerQuery.match(/show.*key|list.*key|what.*key|types of key/)) {
+      return { type: 'SCHEMA_INFO', subtype: 'KEYS' };
+    }
+    if (lowerQuery.match(/show.*table|list.*table|all table|show tables/)) {
+      return { type: 'SCHEMA_INFO', subtype: 'TABLES' };
+    }
+    if (lowerQuery.match(/show.*column|list.*column|describe|schema of|structure of/)) {
+      return { type: 'SCHEMA_INFO', subtype: 'COLUMNS' };
+    }
+
+    // DDL operations
+    if (lowerQuery.match(/create\s+(new\s+)?database/)) {
+      return { type: 'DDL', subtype: 'CREATE_DATABASE' };
+    }
+    if (lowerQuery.match(/create\s+(new\s+)?(a\s+)?table/)) {
+      return { type: 'DDL', subtype: 'CREATE_TABLE' };
+    }
+    if (lowerQuery.match(/add\s+(new\s+)?column|alter\s+table.*add/)) {
+      return { type: 'DDL', subtype: 'ALTER_ADD_COLUMN' };
+    }
+    if (lowerQuery.match(/drop\s+column|alter\s+table.*drop/)) {
+      return { type: 'DDL', subtype: 'ALTER_DROP_COLUMN' };
+    }
+    if (lowerQuery.match(/drop\s+table/)) {
+      return { type: 'DDL', subtype: 'DROP_TABLE' };
+    }
+
+    // DML - INSERT
+    if (lowerQuery.match(/\b(insert|add\s+(new\s+)?(record|row|entry|data|into)|create\s+(new\s+)?(record|row|entry))\b/)) {
+      return { type: 'DML_WRITE_INSERT' };
+    }
+
+    // DML - UPDATE
+    if (lowerQuery.match(/\b(update|modify|change|edit)\b/) && !lowerQuery.includes('add column') && !lowerQuery.includes('drop column')) {
+      return { type: 'DML_WRITE_UPDATE' };
+    }
+    if (lowerQuery.match(/\bset\s+\w+\s+(to|=)\s+/)) {
+      return { type: 'DML_WRITE_UPDATE' };
+    }
+
+    // DML - DELETE
+    if (lowerQuery.match(/\b(delete|remove)\b/) && !lowerQuery.includes('column')) {
+      return { type: 'DML_WRITE_DELETE' };
+    }
+
+    // DML - SELECT (broad matching)
+    if (lowerQuery.match(/\b(select|show|get|fetch|find|list|display|retrieve|view)\b/)) {
+      return { type: 'DML_READ' };
+    }
+    if (lowerQuery.match(/employees?\s+who|students?\s+who|where|filter|search/)) {
+      return { type: 'DML_READ' };
+    }
+    if (lowerQuery.match(/\b(how many|count|total|sum|average|avg|minimum|min|maximum|max)\b/)) {
+      return { type: 'DML_READ', subtype: 'AGGREGATE' };
+    }
+    if (lowerQuery.match(/\b(starts? with|ends? with|contains?|beginning with|like)\b/)) {
+      return { type: 'DML_READ' };
+    }
+    if (lowerQuery.match(/\bsalary\s*(>|<|>=|<=|greater|less|above|below|between|more|over|under)\b/)) {
+      return { type: 'DML_READ' };
+    }
+    if (lowerQuery.match(/\b(top|first|last|highest|lowest|oldest|newest|latest|earliest)\b/)) {
+      return { type: 'DML_READ' };
+    }
+    // If mentions a known table name, treat as SELECT
+    for (const table of (this._currentSchema?.tables || [])) {
+      if (lowerQuery.includes(table.name.toLowerCase())) {
+        return { type: 'DML_READ' };
+      }
+    }
+
+    return { type: 'UNKNOWN' };
+  }
+
+  // ──────────────────────────────────────────
+  // TABLE DETECTION (uses selectedTable as priority)
+  // ──────────────────────────────────────────
+  detectTable(userQuery, lowerQuery, schema, selectedTable = null) {
+    // 1. Explicit table mentions in query
+    for (const table of schema.tables) {
+      const tableLower = table.name.toLowerCase();
+      if (lowerQuery.match(new RegExp(`\\b(from|in|into|to|of|table)\\s+["']?${this.escapeRegex(tableLower)}["']?\\b`, 'i'))) {
+        return table;
+      }
+      if (lowerQuery.match(new RegExp(`\\b${this.escapeRegex(tableLower)}\\s+(table|where|set|values)\\b`, 'i'))) {
+        return table;
+      }
+      // Direct table name mention
+      if (lowerQuery.includes(tableLower)) {
+        return table;
+      }
+    }
+
+    // 2. Implicit table detection via plural/singular forms
+    const implicitMappings = [
+      { pattern: /\bemployees?\b/, keyword: 'employ' },
+      { pattern: /\bstudents?\b/, keyword: 'student' },
+      { pattern: /\bhospitals?\b/, keyword: 'hospital' },
+      { pattern: /\borders?\b/, keyword: 'order' },
+      { pattern: /\bproducts?\b/, keyword: 'product' },
+      { pattern: /\bcustomers?\b/, keyword: 'customer' },
+      { pattern: /\bdepartments?\b/, keyword: 'department' },
+      { pattern: /\busers?\b/, keyword: 'user' },
+    ];
+
+    for (const mapping of implicitMappings) {
+      if (lowerQuery.match(mapping.pattern)) {
+        const table = schema.tables.find(t => t.name.toLowerCase().includes(mapping.keyword));
+        if (table) return table;
+      }
+    }
+
+    // 3. Use selectedTable if set
+    if (selectedTable) {
+      const table = schema.tables.find(t => t.name === selectedTable);
+      if (table) return table;
+    }
+
+    // 4. Detect from column names mentioned
+    const words = userQuery.match(/\b\w+\b/g) || [];
+    const skipWords = new Set(['show', 'get', 'find', 'list', 'all', 'from', 'where', 'the', 'a', 'an', 'in', 'to',
+      'with', 'that', 'starts', 'ends', 'contains', 'name', 'names', 'employee', 'student', 'select',
+      'insert', 'update', 'delete', 'remove', 'add', 'create', 'table', 'column', 'record', 'row',
+      'data', 'new', 'set', 'value', 'values']);
+    for (const word of words) {
+      if (skipWords.has(word.toLowerCase()) || word.length < 3) continue;
+      for (const table of schema.tables) {
+        const hasColumn = table.columns.some(col =>
+          col.name.toLowerCase() === word.toLowerCase() ||
+          this.getFuzzyNames(col.name).some(fn => fn.toLowerCase() === word.toLowerCase())
+        );
+        if (hasColumn) return table;
+      }
+    }
+
+    // 5. If only one table, use it
+    if (schema.tables.length === 1) {
+      return schema.tables[0];
+    }
+
+    return null;
+  }
+
+  escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // ──────────────────────────────────────────
+  // FUZZY COLUMN NAME MAPPING
+  // ──────────────────────────────────────────
+  getFuzzyNames(colName) {
+    const colLower = colName.toLowerCase();
+    const fuzzyNames = [colName, colLower];
+
+    const mappings = {
+      'first_name': ['first_name', 'firstname', 'fname', 'name', 'first', 'names'],
+      'last_name': ['last_name', 'lastname', 'lname', 'surname', 'last'],
+      'email': ['email', 'mail', 'e-mail', 'e_mail'],
+      'phone': ['phone', 'mobile', 'cell', 'telephone', 'phone_number', 'contact'],
+      'address': ['address', 'addr', 'location'],
+      'salary': ['salary', 'pay', 'wage', 'compensation', 'income'],
+      'department': ['department', 'dept', 'division', 'department_id'],
+      'employee_id': ['employee_id', 'emp_id', 'empid', 'id', 'eid'],
+      'hire_date': ['hire_date', 'join_date', 'joined', 'hired', 'start_date', 'hiredate', 'joining'],
+      'job_id': ['job_id', 'job', 'role', 'position', 'designation', 'jobid'],
+      'manager_id': ['manager_id', 'manager', 'boss', 'supervisor'],
+      'commission': ['commission', 'commission_pct', 'bonus'],
+      'student_id': ['student_id', 'sid', 'roll', 'roll_number', 'rollno'],
+      'age': ['age', 'years'],
+      'grade': ['grade', 'marks', 'score', 'gpa', 'cgpa'],
+    };
+
+    for (const [key, aliases] of Object.entries(mappings)) {
+      if (colLower.includes(key) || aliases.some(a => colLower.includes(a))) {
+        fuzzyNames.push(...aliases);
+      }
+    }
+
+    return [...new Set(fuzzyNames)];
+  }
+
+  // Find actual column from a user-mentioned word
+  findColumn(word, table) {
+    const wordLower = word.toLowerCase();
+    // Direct match
+    for (const col of table.columns) {
+      if (col.name.toLowerCase() === wordLower) return col;
+    }
+    // Fuzzy match
+    for (const col of table.columns) {
+      const fuzzy = this.getFuzzyNames(col.name);
+      if (fuzzy.some(f => f.toLowerCase() === wordLower)) return col;
+    }
+    return null;
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: Conversational
+  // ──────────────────────────────────────────
+  handleConversational(userQuery, lowerQuery, queryClass, schema) {
+    if (queryClass.subtype === 'GREETING') {
+      const greetings = {
+        'hi': 'Hello! I can help you query your database. Try "show all employees" or "find students where age > 20".',
+        'hello': 'Hi there! What would you like to know about your database?',
+        'hey': 'Hey! Ready to help you with database queries. What do you need?',
+        'thanks': "You're welcome! Let me know if you need anything else.",
+        'thank you': 'Happy to help! Feel free to ask more questions.',
+        'ok': 'What else can I help you with?',
+        'okay': 'What else can I help you with?',
+        'yes': 'How can I assist you further?',
+        'bye': 'Goodbye! Come back if you need more help.',
+        'good morning': 'Good morning! Ready to help with your database queries.',
+        'good evening': 'Good evening! What database operations can I help with?',
+      };
+
+      const key = Object.keys(greetings).find(k => lowerQuery.startsWith(k));
+      return {
+        type: 'info',
+        message: key ? greetings[key] : 'Hello! I can help you query your database using natural language.'
+      };
+    }
+
+    if (queryClass.subtype === 'GENERAL_QUESTION') {
+      return {
+        type: 'info',
+        message: `I'm a database assistant specialized in SQL queries. I can help you with:\n\n` +
+          `- **Querying data**: "show employees where salary > 10000"\n` +
+          `- **Filtering**: "find names starting with S"\n` +
+          `- **Aggregations**: "average salary by department"\n` +
+          `- **Inserting data**: "insert employee name John salary 5000"\n` +
+          `- **Updating records**: "update salary to 6000 where name is John"\n` +
+          `- **Deleting records**: "delete employee where name is John"\n` +
+          `- **Schema info**: "show all tables", "show constraints"\n\n` +
+          `For general knowledge questions, please use a search engine. I'm focused on database operations!`
+      };
+    }
+
+    if (queryClass.subtype === 'HELP') {
+      const tableNames = schema.tables.map(t => t.name).join(', ');
+      return {
+        type: 'info',
+        message: `I'm your SQL database assistant! Here's what I can do:\n\n` +
+          `**Available tables:** ${tableNames}\n\n` +
+          `**Query examples:**\n` +
+          `- "Show all data from EMPLOYEE"\n` +
+          `- "Find employees whose name starts with S"\n` +
+          `- "Count employees by department"\n` +
+          `- "Show employees with salary greater than 10000"\n` +
+          `- "Insert into EMPLOYEE name John salary 5000"\n` +
+          `- "Update employee salary to 6000 where name is John"\n` +
+          `- "Delete from EMPLOYEE where name is John"\n` +
+          `- "Add column AGE to EMPLOYEE"\n` +
+          `- "Show constraints"\n` +
+          `- "Create table SCHOOL with columns name, location, rating"`
+      };
+    }
+
+    return {
+      type: 'info',
+      message: 'I can help you work with your database. Ask me to show data, insert records, update values, or explain your schema.'
+    };
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: Schema Info
+  // ──────────────────────────────────────────
+  handleSchemaInfo(userQuery, lowerQuery, schema, queryClass, selectedTable) {
+    switch (queryClass.subtype) {
+      case 'CONSTRAINTS':
+        return this.showConstraints(schema);
+      case 'KEYS':
+        return this.showKeys(schema);
+      case 'TABLES':
+        return {
+          type: 'sql',
+          query: `SELECT name as table_name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`,
+          queryType: 'SELECT',
+          explanation: 'Listing all tables in the database'
+        };
+      case 'COLUMNS': {
+        const table = this.detectTable(userQuery, lowerQuery, schema, selectedTable);
+        if (table) {
+          return {
+            type: 'sql',
+            query: `PRAGMA table_info("${table.name}")`,
+            queryType: 'SELECT',
+            explanation: `Showing column information for ${table.name}`
+          };
+        }
+        return {
+          type: 'clarification',
+          message: 'Which table would you like to see columns for?',
+          suggestions: schema.tables.map(t => ({
+            label: t.name,
+            value: `Show columns from ${t.name}`,
+            description: `${t.columns.length} columns, ${t.rowCount} rows`
+          }))
+        };
+      }
+      default:
+        return this.handleUnknown(userQuery, schema);
+    }
+  }
+
+  showConstraints(schema) {
+    let message = '**Database Constraints:**\n\n';
+    schema.tables.forEach(table => {
+      message += `**${table.name}:**\n`;
+      const pks = table.columns.filter(c => c.primaryKey);
+      if (pks.length > 0) message += `  - PRIMARY KEY: ${pks.map(c => c.name).join(', ')}\n`;
+      if (table.foreignKeys && table.foreignKeys.length > 0) {
+        table.foreignKeys.forEach(fk => { message += `  - FOREIGN KEY: ${fk.from} -> ${fk.table}(${fk.to})\n`; });
+      }
+      const notNulls = table.columns.filter(c => c.notNull && !c.primaryKey);
+      if (notNulls.length > 0) message += `  - NOT NULL: ${notNulls.map(c => c.name).join(', ')}\n`;
+      if (table.indexes) {
+        table.indexes.filter(idx => idx.unique).forEach(idx => { message += `  - UNIQUE: ${idx.name}\n`; });
+      }
+      message += '\n';
+    });
+    return { type: 'info', message };
+  }
+
+  showKeys(schema) {
+    let message = '**Database Keys:**\n\n';
+    schema.tables.forEach(table => {
+      message += `**${table.name}:**\n`;
+      const pks = table.columns.filter(c => c.primaryKey);
+      if (pks.length > 0) message += `  - **Primary Keys:** ${pks.map(c => `${c.name} (${c.type})`).join(', ')}\n`;
+      if (table.foreignKeys && table.foreignKeys.length > 0) {
+        message += `  - **Foreign Keys:**\n`;
+        table.foreignKeys.forEach(fk => { message += `    - ${fk.from} references ${fk.table}(${fk.to})\n`; });
+      }
+      if (pks.length === 0 && (!table.foreignKeys || table.foreignKeys.length === 0)) {
+        message += `  - No keys defined\n`;
+      }
+      message += '\n';
+    });
+    return { type: 'info', message };
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: DDL (CREATE TABLE, ALTER, DROP)
+  // ──────────────────────────────────────────
+  handleDDL(userQuery, lowerQuery, schema, queryClass, selectedTable) {
+    switch (queryClass.subtype) {
+      case 'CREATE_DATABASE':
+        return {
+          type: 'info',
+          message: 'Database creation is handled through file uploads. Please upload a new SQLite database file from the dashboard.'
+        };
+
+      case 'CREATE_TABLE':
+        return this.handleCreateTable(userQuery, lowerQuery, schema);
+
+      case 'ALTER_ADD_COLUMN':
+        return this.handleAlterAddColumn(userQuery, lowerQuery, schema, selectedTable);
+
+      case 'ALTER_DROP_COLUMN':
+        return {
+          type: 'error',
+          message: 'DROP COLUMN is not supported in SQLite. You would need to recreate the table without that column.'
+        };
+
+      case 'DROP_TABLE':
+        return {
+          type: 'error',
+          message: 'DROP TABLE operations require explicit confirmation. Please type the full SQL: DROP TABLE "table_name"'
+        };
+
+      default:
+        return this.handleUnknown(userQuery, schema);
+    }
+  }
+
+  handleCreateTable(userQuery, lowerQuery, schema) {
+    // Extract table name: "create table School" or "create table with name School"
+    let tableName = null;
+    const namePatterns = [
+      /create\s+(?:a\s+)?(?:new\s+)?table\s+(?:with\s+)?(?:name\s+)?["']?(\w+)["']?/i,
+      /create\s+(?:a\s+)?(?:new\s+)?table\s+called\s+["']?(\w+)["']?/i,
+    ];
+
+    for (const p of namePatterns) {
+      const m = userQuery.match(p);
+      if (m) { tableName = m[1]; break; }
+    }
+
+    if (!tableName) {
+      return {
+        type: 'clarification',
+        message: 'What should the table be named? And what columns should it have?\n\nExample: "Create table School with columns name TEXT, location TEXT, rating INTEGER"'
+      };
+    }
+
+    // Check for column definitions
+    const withColumnsMatch = userQuery.match(/(?:with\s+)?columns?\s+(.+)/i);
+    if (withColumnsMatch) {
+      const colDefs = this.parseColumnDefinitions(withColumnsMatch[1]);
+      if (colDefs.length > 0) {
+        const colSQL = colDefs.map(c => `"${c.name}" ${c.type}`).join(', ');
+        const query = `CREATE TABLE "${tableName}" (id INTEGER PRIMARY KEY AUTOINCREMENT, ${colSQL})`;
+        return {
+          type: 'sql',
+          query,
+          queryType: 'CREATE',
+          explanation: `Creating table ${tableName} with ${colDefs.length} columns (plus auto-increment id)`
+        };
+      }
+    }
+
+    // No columns specified - ask for them
+    return {
+      type: 'clarification',
+      message: `What columns should the "${tableName}" table have?\n\nExample: "Create table ${tableName} with columns name TEXT, location TEXT, rating INTEGER"`,
+      suggestions: [
+        { label: 'Text columns', value: `Create table ${tableName} with columns name TEXT, description TEXT`, description: 'String/text data' },
+        { label: 'Mixed columns', value: `Create table ${tableName} with columns name TEXT, age INTEGER, score REAL`, description: 'Text, numbers, decimals' },
+        { label: 'Full example', value: `Create table ${tableName} with columns name TEXT, address TEXT, phone TEXT, rating INTEGER`, description: 'Multiple column types' }
+      ]
+    };
+  }
+
+  parseColumnDefinitions(colString) {
+    const cols = [];
+    // Split by comma
+    const parts = colString.split(/,/).map(s => s.trim()).filter(Boolean);
+    for (const part of parts) {
+      const tokens = part.trim().split(/\s+/);
+      if (tokens.length >= 1) {
+        const name = tokens[0].replace(/["']/g, '');
+        let type = 'TEXT';
+        if (tokens.length >= 2) {
+          const t = tokens[1].toUpperCase();
+          if (t.includes('INT')) type = 'INTEGER';
+          else if (t.includes('REAL') || t.includes('FLOAT') || t.includes('DECIMAL') || t.includes('NUM')) type = 'REAL';
+          else if (t.includes('BLOB')) type = 'BLOB';
+          else type = 'TEXT';
+        }
+        if (name && !['and', 'with', 'columns', 'column'].includes(name.toLowerCase())) {
+          cols.push({ name, type });
+        }
+      }
+    }
+    return cols;
+  }
+
+  handleAlterAddColumn(userQuery, lowerQuery, schema, selectedTable) {
+    const table = this.detectTable(userQuery, lowerQuery, schema, selectedTable);
+    if (!table) {
+      return {
+        type: 'clarification',
+        message: 'Which table would you like to add a column to?',
+        suggestions: schema.tables.map(t => ({
+          label: t.name,
+          value: `Add column to ${t.name}`,
+          description: `${t.columns.length} columns`
+        }))
+      };
+    }
+
+    const colMatch = userQuery.match(/column\s+(?:name\s+)?["']?(\w+)["']?/i);
+    if (!colMatch) {
+      return {
+        type: 'clarification',
+        message: `What column name do you want to add to ${table.name}?\n\nExample: Add column AGE INTEGER to ${table.name}`,
+        suggestions: [
+          { label: 'Text column', value: `Add column NAME TEXT to ${table.name}`, description: 'String/text data' },
+          { label: 'Number column', value: `Add column AGE INTEGER to ${table.name}`, description: 'Integer numbers' },
+          { label: 'Decimal column', value: `Add column PRICE REAL to ${table.name}`, description: 'Decimal numbers' }
+        ]
+      };
+    }
+
+    const columnName = colMatch[1].toUpperCase();
+    let dataType = 'TEXT';
+    if (lowerQuery.match(/\b(integer|int|number)\b/)) dataType = 'INTEGER';
+    else if (lowerQuery.match(/\b(real|float|decimal)\b/)) dataType = 'REAL';
+    else if (lowerQuery.match(/\b(date|time)\b/)) dataType = 'TEXT';
+
+    return {
+      type: 'sql',
+      query: `ALTER TABLE "${table.name}" ADD COLUMN "${columnName}" ${dataType}`,
+      queryType: 'ALTER',
+      explanation: `Adding column ${columnName} (${dataType}) to ${table.name}`
+    };
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: SELECT (the big one)
+  // ──────────────────────────────────────────
+  handleSelect(userQuery, lowerQuery, schema, queryClass, selectedTable) {
+    this._currentSchema = schema; // for table detection in classifier
+    const table = this.detectTable(userQuery, lowerQuery, schema, selectedTable);
+
+    if (!table) {
+      return {
+        type: 'clarification',
+        message: 'Which table would you like to query?',
+        suggestions: schema.tables.map(t => ({
+          label: t.name,
+          value: `Show all data from ${t.name}`,
+          description: `${t.rowCount} rows, ${t.columns.length} columns`
+        }))
+      };
+    }
+
+    // ── Aggregate queries ──
+    if (queryClass.subtype === 'AGGREGATE' || lowerQuery.match(/\b(how many|count|total|sum|average|avg|minimum|min|maximum|max)\b/)) {
+      return this.handleAggregate(userQuery, lowerQuery, table);
+    }
+
+    // ── Determine columns to select ──
+    const selectCols = this.detectSelectColumns(lowerQuery, table);
+
+    // ── Build WHERE clause ──
+    const whereClause = this.buildWhereClause(userQuery, lowerQuery, table);
+
+    // ── ORDER BY ──
+    const orderBy = this.detectOrderBy(lowerQuery, table);
+
+    // ── DISTINCT ──
+    const useDistinct = lowerQuery.includes('distinct') || lowerQuery.includes('unique');
+
+    // ── LIMIT ──
+    let limit = 100;
+    const limitMatch = lowerQuery.match(/\b(?:top|first|limit)\s+(\d+)\b/);
+    if (limitMatch) limit = parseInt(limitMatch[1]);
+
+    const distinctStr = useDistinct ? 'DISTINCT ' : '';
+    const query = `SELECT ${distinctStr}${selectCols} FROM "${table.name}"${whereClause}${orderBy} LIMIT ${limit}`;
+
+    return {
+      type: 'sql',
+      query,
+      queryType: 'SELECT',
+      explanation: `Retrieving records from ${table.name}${whereClause ? ' with filters' : ''}`
+    };
+  }
+
+  detectSelectColumns(lowerQuery, table) {
+    // Check if user wants specific columns
+    // "show employee names" → FIRST_NAME, LAST_NAME
+    // "show employee salary" → SALARY
+    // "show names and salary" → FIRST_NAME, LAST_NAME, SALARY
+    const mentionedCols = [];
+
+    // "names" → FIRST_NAME, LAST_NAME
+    if (lowerQuery.match(/\bnames?\b/) && !lowerQuery.match(/\bname\s+(is|=|starts?|ends?|contains?)\b/)) {
+      const firstName = table.columns.find(c => c.name.toLowerCase().includes('first_name') || c.name.toLowerCase() === 'name');
+      const lastName = table.columns.find(c => c.name.toLowerCase().includes('last_name'));
+      if (firstName) mentionedCols.push(firstName.name);
+      if (lastName) mentionedCols.push(lastName.name);
+    }
+
+    // Check for other specific column mentions
+    const colKeywords = ['salary', 'email', 'phone', 'department', 'job', 'hire_date', 'age', 'grade', 'address'];
+    for (const kw of colKeywords) {
+      if (lowerQuery.includes(kw)) {
+        const col = table.columns.find(c =>
+          c.name.toLowerCase().includes(kw) ||
+          this.getFuzzyNames(c.name).some(f => f.toLowerCase() === kw)
+        );
+        if (col && !mentionedCols.includes(col.name)) {
+          mentionedCols.push(col.name);
+        }
+      }
+    }
+
+    if (mentionedCols.length > 0) {
+      return mentionedCols.map(c => `"${c}"`).join(', ');
+    }
+    return '*';
+  }
+
+  handleAggregate(userQuery, lowerQuery, table) {
+    // COUNT
+    if (lowerQuery.match(/\b(how many|count|total number)\b/)) {
+      const whereClause = this.buildWhereClause(userQuery, lowerQuery, table);
+      return {
+        type: 'sql',
+        query: `SELECT COUNT(*) as total_count FROM "${table.name}"${whereClause}`,
+        queryType: 'SELECT',
+        explanation: `Counting records in ${table.name}${whereClause ? ' with filters' : ''}`
+      };
+    }
+
+    // SUM
+    if (lowerQuery.match(/\b(sum|total)\b/) && !lowerQuery.match(/\btotal number\b/)) {
+      const numCol = this.findNumericColumnFromQuery(lowerQuery, table);
+      if (numCol) {
+        const groupBy = this.detectGroupBy(lowerQuery, table);
+        return {
+          type: 'sql',
+          query: `SELECT ${groupBy.select}SUM("${numCol.name}") as total_${numCol.name.toLowerCase()} FROM "${table.name}"${groupBy.clause}`,
+          queryType: 'SELECT',
+          explanation: `Sum of ${numCol.name} in ${table.name}`
+        };
+      }
+    }
+
+    // AVERAGE
+    if (lowerQuery.match(/\b(average|avg|mean)\b/)) {
+      const numCol = this.findNumericColumnFromQuery(lowerQuery, table);
+      if (numCol) {
+        const groupBy = this.detectGroupBy(lowerQuery, table);
+        return {
+          type: 'sql',
+          query: `SELECT ${groupBy.select}ROUND(AVG("${numCol.name}"), 2) as avg_${numCol.name.toLowerCase()} FROM "${table.name}"${groupBy.clause}`,
+          queryType: 'SELECT',
+          explanation: `Average ${numCol.name} in ${table.name}`
+        };
+      }
+    }
+
+    // MIN
+    if (lowerQuery.match(/\b(minimum|min|lowest|smallest)\b/)) {
+      const numCol = this.findNumericColumnFromQuery(lowerQuery, table);
+      if (numCol) {
+        return {
+          type: 'sql',
+          query: `SELECT MIN("${numCol.name}") as min_${numCol.name.toLowerCase()} FROM "${table.name}"`,
+          queryType: 'SELECT',
+          explanation: `Minimum ${numCol.name} in ${table.name}`
+        };
+      }
+    }
+
+    // MAX
+    if (lowerQuery.match(/\b(maximum|max|highest|largest|top)\b/)) {
+      const numCol = this.findNumericColumnFromQuery(lowerQuery, table);
+      if (numCol) {
+        return {
+          type: 'sql',
+          query: `SELECT MAX("${numCol.name}") as max_${numCol.name.toLowerCase()} FROM "${table.name}"`,
+          queryType: 'SELECT',
+          explanation: `Maximum ${numCol.name} in ${table.name}`
+        };
+      }
+    }
+
+    // Fallback COUNT
+    return {
+      type: 'sql',
+      query: `SELECT COUNT(*) as total_count FROM "${table.name}"`,
+      queryType: 'SELECT',
+      explanation: `Counting records in ${table.name}`
+    };
+  }
+
+  findNumericColumnFromQuery(lowerQuery, table) {
+    // Look for explicitly mentioned numeric column
+    for (const col of table.columns) {
+      const fuzzy = this.getFuzzyNames(col.name);
+      for (const f of fuzzy) {
+        if (lowerQuery.includes(f.toLowerCase())) {
+          return col;
+        }
+      }
+    }
+    // Default to first numeric column
+    return table.columns.find(c =>
+      c.type.toUpperCase().includes('INT') ||
+      c.type.toUpperCase().includes('REAL') ||
+      c.type.toUpperCase().includes('NUMERIC') ||
+      c.name.toLowerCase().includes('salary') ||
+      c.name.toLowerCase().includes('amount') ||
+      c.name.toLowerCase().includes('price')
+    ) || null;
+  }
+
+  detectGroupBy(lowerQuery, table) {
+    // "by department", "group by job"
+    const groupMatch = lowerQuery.match(/\b(?:by|per|for each|group\s+by)\s+(\w+)/i);
+    if (groupMatch) {
+      const col = this.findColumn(groupMatch[1], table);
+      if (col) {
+        return {
+          select: `"${col.name}", `,
+          clause: ` GROUP BY "${col.name}" ORDER BY "${col.name}"`
+        };
+      }
+    }
+    return { select: '', clause: '' };
+  }
+
+  detectOrderBy(lowerQuery, table) {
+    // "order by salary", "sorted by name", "highest salary first"
+    const orderMatch = lowerQuery.match(/\b(?:order|sort(?:ed)?)\s+by\s+(\w+)\s*(asc|desc|ascending|descending)?/i);
+    if (orderMatch) {
+      const col = this.findColumn(orderMatch[1], table);
+      if (col) {
+        const dir = (orderMatch[2] && orderMatch[2].match(/desc/i)) ? 'DESC' : 'ASC';
+        return ` ORDER BY "${col.name}" ${dir}`;
+      }
+    }
+
+    // "highest salary" → ORDER BY SALARY DESC
+    if (lowerQuery.match(/\b(highest|largest|most|top)\b/)) {
+      const numCol = this.findNumericColumnFromQuery(lowerQuery, table);
+      if (numCol) return ` ORDER BY "${numCol.name}" DESC`;
+    }
+    if (lowerQuery.match(/\b(lowest|smallest|least|bottom)\b/)) {
+      const numCol = this.findNumericColumnFromQuery(lowerQuery, table);
+      if (numCol) return ` ORDER BY "${numCol.name}" ASC`;
+    }
+
+    return '';
+  }
+
+  // ──────────────────────────────────────────
+  // BUILD WHERE CLAUSE
+  // ──────────────────────────────────────────
+  buildWhereClause(userQuery, lowerQuery, table) {
+    const conditions = [];
+
+    // ── LIKE patterns: "starts with S", "ends with son", "contains John" ──
+    const likePatterns = [
+      { regex: /(?:names?|first_name|fname)?\s*(?:that\s+)?(?:starts?|beginning)\s+with\s+["']?(\w+)["']?/i, type: 'startsWith', colHint: 'name' },
+      { regex: /(?:names?|first_name|fname)?\s*(?:that\s+)?(?:ends?|ending)\s+with\s+["']?(\w+)["']?/i, type: 'endsWith', colHint: 'name' },
+      { regex: /(?:names?|first_name|fname)?\s*(?:that\s+)?(?:contains?|containing|having|like)\s+["']?(\w+)["']?/i, type: 'contains', colHint: 'name' },
+    ];
+
+    for (const lp of likePatterns) {
+      const match = userQuery.match(lp.regex);
+      if (match) {
+        const value = match[1];
+        // Determine which column
+        let col = null;
+
+        // Check if a column is explicitly mentioned before the pattern
+        const beforeMatch = userQuery.substring(0, match.index).trim();
+        const lastWord = beforeMatch.split(/\s+/).pop();
+        if (lastWord) col = this.findColumn(lastWord, table);
+
+        if (!col) {
+          // Use hint
+          if (lp.colHint === 'name') {
+            col = table.columns.find(c =>
+              c.name.toLowerCase().includes('first_name') || c.name.toLowerCase() === 'name' || c.name.toLowerCase().includes('name')
+            );
+          }
+          if (!col) col = this.findColumn(lp.colHint, table);
+        }
+
+        if (col) {
+          // Use UPPER() for case-insensitive pattern matching
+          if (lp.type === 'startsWith') {
+            conditions.push(`UPPER("${col.name}") LIKE '${value.toUpperCase()}%'`);
+          } else if (lp.type === 'endsWith') {
+            conditions.push(`UPPER("${col.name}") LIKE '%${value.toUpperCase()}'`);
+          } else {
+            conditions.push(`UPPER("${col.name}") LIKE '%${value.toUpperCase()}%'`);
+          }
+        }
+      }
+    }
+
+    // ── Date filtering ──
+    const dateMatch = lowerQuery.match(/(joined|hired|enrolled|in)\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
+    if (dateMatch) {
+      const month = dateMatch[2].toUpperCase().substring(0, 3);
+      const dateCol = table.columns.find(c =>
+        c.name.toLowerCase().includes('date') || c.name.toLowerCase().includes('hire') || c.name.toLowerCase().includes('join')
+      );
+      if (dateCol) {
+        conditions.push(`"${dateCol.name}" LIKE '%-${month}-%'`);
+      }
+    }
+
+    // Year filtering
+    const yearMatch = lowerQuery.match(/\b(in\s+)?(19|20)\d{2}\b/);
+    if (yearMatch && conditions.length === 0) {
+      const year = lowerQuery.match(/(19|20)\d{2}/)[0];
+      const dateCol = table.columns.find(c => c.name.toLowerCase().includes('date'));
+      if (dateCol) {
+        conditions.push(`"${dateCol.name}" LIKE '%${year.substring(2)}'`);
+      }
+    }
+
+    // ── BETWEEN ──
+    const betweenMatch = lowerQuery.match(/(\w+)\s+between\s+(\d+)\s+and\s+(\d+)/i);
+    if (betweenMatch) {
+      const col = this.findColumn(betweenMatch[1], table);
+      if (col) {
+        conditions.push(`"${col.name}" BETWEEN ${betweenMatch[2]} AND ${betweenMatch[3]}`);
+      }
+    }
+
+    // ── Comparison: "salary > 10000", "age >= 20" ──
+    const compPatterns = [
+      /(\w+)\s*(>=|<=|>|<|!=)\s*(\d+(?:\.\d+)?)/g,
+      /(\w+)\s+(?:greater than|more than|above|over)\s+(\d+(?:\.\d+)?)/gi,
+      /(\w+)\s+(?:less than|below|under)\s+(\d+(?:\.\d+)?)/gi,
+    ];
+
+    // Comparison operators
+    const compMatch1 = lowerQuery.matchAll(/(\w+)\s*(>=|<=|!=|>|<)\s*(\d+(?:\.\d+)?)/g);
+    for (const m of compMatch1) {
+      const col = this.findColumn(m[1], table);
+      if (col && !conditions.some(c => c.includes(`"${col.name}"`))) {
+        conditions.push(`"${col.name}" ${m[2]} ${m[3]}`);
+      }
+    }
+
+    // "greater than", "more than", etc.
+    const gtMatch = lowerQuery.match(/(\w+)\s+(?:greater than|more than|above|over)\s+(\d+(?:\.\d+)?)/i);
+    if (gtMatch) {
+      const col = this.findColumn(gtMatch[1], table);
+      if (col && !conditions.some(c => c.includes(`"${col.name}"`))) {
+        conditions.push(`"${col.name}" > ${gtMatch[2]}`);
+      }
+    }
+
+    const ltMatch = lowerQuery.match(/(\w+)\s+(?:less than|below|under)\s+(\d+(?:\.\d+)?)/i);
+    if (ltMatch) {
+      const col = this.findColumn(ltMatch[1], table);
+      if (col && !conditions.some(c => c.includes(`"${col.name}"`))) {
+        conditions.push(`"${col.name}" < ${ltMatch[2]}`);
+      }
+    }
+
+    // ── Column = value patterns ──
+    if (conditions.length === 0) {
+      for (const col of table.columns) {
+        if (conditions.some(c => c.includes(`"${col.name}"`))) continue;
+        const fuzzyNames = this.getFuzzyNames(col.name);
+
+        for (const fName of fuzzyNames) {
+          const patterns = [
+            new RegExp(`\\bwhere\\s+${this.escapeRegex(fName)}\\s*=\\s*['"]?([^\\s'"\\n,]+?)['"]?(?:\\s|$)`, 'i'),
+            new RegExp(`\\b${this.escapeRegex(fName)}\\s+is\\s+['"]?([^\\s'"\\n,]+?)['"]?(?:\\s|$)`, 'i'),
+            new RegExp(`\\b${this.escapeRegex(fName)}\\s*=\\s*['"]?([^\\s'"\\n,]+?)['"]?(?:\\s|$)`, 'i'),
+          ];
+
+          for (const pattern of patterns) {
+            const match = userQuery.match(pattern);
+            if (match && match[1]) {
+              const value = match[1].trim().replace(/^["']|["']$/g, '');
+              if (['where', 'and', 'or', 'from', 'table', 'in', 'to', 'the', 'is'].includes(value.toLowerCase())) continue;
+
+              if (col.type.toUpperCase().includes('INT')) {
+                const parsed = parseInt(value);
+                if (!isNaN(parsed)) { conditions.push(`"${col.name}" = ${parsed}`); break; }
+              } else if (col.type.toUpperCase().includes('REAL') || col.type.toUpperCase().includes('FLOAT')) {
+                const parsed = parseFloat(value);
+                if (!isNaN(parsed)) { conditions.push(`"${col.name}" = ${parsed}`); break; }
+              } else {
+                conditions.push(`LOWER("${col.name}") = LOWER('${value.replace(/'/g, "''")}')`);
+                break;
+              }
+            }
+          }
+          if (conditions.some(c => c.includes(`"${col.name}"`))) break;
+        }
+      }
+    }
+
+    return conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: INSERT
+  // ──────────────────────────────────────────
+  handleInsert(userQuery, lowerQuery, schema, selectedTable) {
+    const table = this.detectTable(userQuery, lowerQuery, schema, selectedTable);
+    if (!table) {
+      return {
+        type: 'clarification',
+        message: 'Which table would you like to insert data into?',
+        suggestions: schema.tables.map(t => ({
+          label: t.name,
+          value: `Insert into ${t.name}`,
+          description: `Columns: ${t.columns.filter(c => !c.primaryKey).slice(0, 5).map(c => c.name).join(', ')}`
+        }))
+      };
+    }
+
+    const values = {};
+    const insertableColumns = table.columns.filter(c =>
+      !(c.primaryKey && (c.name.toLowerCase().endsWith('_id') || c.name.toLowerCase() === 'id'))
+    );
+
+    // Try column-value pairs
+    for (const col of insertableColumns) {
+      const fuzzyNames = this.getFuzzyNames(col.name);
+      for (const fName of fuzzyNames) {
+        const patterns = [
+          new RegExp(`\\b${this.escapeRegex(fName)}\\s*[=:]\\s*["']([^"']+)["']`, 'i'),
+          new RegExp(`\\b${this.escapeRegex(fName)}\\s*[=:]\\s*([^,\\s]+)`, 'i'),
+          new RegExp(`\\b${this.escapeRegex(fName)}\\s+["']([^"']+)["']`, 'i'),
+          new RegExp(`\\b${this.escapeRegex(fName)}\\s+([^,\\s]+)`, 'i'),
+        ];
+        for (const pattern of patterns) {
+          const match = userQuery.match(pattern);
+          if (match && match[1]) {
+            let value = match[1].trim().replace(/^["']|["']$/g, '');
+            if (!value || ['into', 'in', 'to', 'insert', 'add', 'create', 'new', 'table', 'employee', 'student'].includes(value.toLowerCase())) continue;
+
+            if (col.type.toUpperCase().includes('INT')) {
+              const parsed = parseInt(value);
+              if (!isNaN(parsed)) { values[col.name] = parsed; break; }
+            } else if (col.type.toUpperCase().includes('REAL') || col.type.toUpperCase().includes('FLOAT')) {
+              const parsed = parseFloat(value);
+              if (!isNaN(parsed)) { values[col.name] = parsed; break; }
+            } else {
+              values[col.name] = `'${value.replace(/'/g, "''")}'`;
+              break;
+            }
+          }
+        }
+        if (values[col.name] !== undefined) break;
+      }
+    }
+
+    // Positional extraction: "insert employee Heera" → FIRST_NAME = 'Heera'
+    if (Object.keys(values).length === 0) {
+      // Extract quoted values or words after table name / keywords
+      const tableName = table.name.toLowerCase();
+      let remaining = lowerQuery;
+      // Remove command words and table name
+      remaining = remaining.replace(/\b(insert|add|into|new|record|row|entry|data|to|in)\b/g, '').trim();
+      remaining = remaining.replace(new RegExp(`\\b${this.escapeRegex(tableName)}\\b`, 'g'), '').trim();
+
+      // Extract quoted strings first
+      const quotedValues = [];
+      const quotedMatch = userQuery.matchAll(/["']([^"']+)["']/g);
+      for (const m of quotedMatch) quotedValues.push(m[1]);
+
+      // Then remaining words
+      const remainingClean = remaining.replace(/["'][^"']*["']/g, '').trim();
+      const words = remainingClean.split(/\s+/).filter(w => w.length > 0 && !['the', 'a', 'an', 'employee', 'student'].includes(w));
+
+      const allValues = [...quotedValues, ...words];
+
+      if (allValues.length > 0) {
+        // Map to first non-PK columns
+        const textCols = insertableColumns.filter(c => !c.type.toUpperCase().includes('INT') || c.name.toLowerCase().includes('name'));
+        allValues.forEach((val, idx) => {
+          if (idx < textCols.length) {
+            if (textCols[idx].type.toUpperCase().includes('INT')) {
+              const parsed = parseInt(val);
+              values[textCols[idx].name] = !isNaN(parsed) ? parsed : `'${val.replace(/'/g, "''")}'`;
+            } else {
+              values[textCols[idx].name] = `'${val.replace(/'/g, "''")}'`;
+            }
+          }
+        });
+      }
+    }
+
+    if (Object.keys(values).length === 0) {
+      const requiredCols = insertableColumns.filter(c => c.notNull);
+      const optionalCols = insertableColumns.filter(c => !c.notNull);
+
+      const exampleCol1 = requiredCols[0] || insertableColumns[0];
+      const exampleCol2 = requiredCols[1] || optionalCols[0] || insertableColumns[1];
+
+      const exampleVal1 = exampleCol1.type.toUpperCase().includes('INT') ? '100' :
+                          exampleCol1.type.toUpperCase().includes('REAL') ? '99.99' : '"example_value"';
+      const exampleVal2 = exampleCol2 ? (exampleCol2.type.toUpperCase().includes('INT') ? '50' : '"value2"') : '';
+
+      return {
+        type: 'clarification',
+        message: `Please provide values to insert into ${table.name}.\n\nExamples:\n• Insert into ${table.name} ${exampleCol1.name} ${exampleVal1}${exampleCol2 ? ` ${exampleCol2.name} ${exampleVal2}` : ''}\n• Insert ${table.name} ${insertableColumns.slice(0, 2).map(c => `${c.name}=value`).join(', ')}`,
+        suggestions: insertableColumns.slice(0, 4).map(c => ({
+          label: c.name,
+          value: `Insert into ${table.name} ${c.name} "example_value"`,
+          description: `${c.type}${c.notNull ? ' (Required)' : ' (Optional)'}`
+        }))
+      };
+    }
+
+    const columns = Object.keys(values);
+    const valueList = Object.values(values);
+    const query = `INSERT INTO "${table.name}" (${columns.map(c => `"${c}"`).join(', ')}) VALUES (${valueList.join(', ')})`;
+
+    return {
+      type: 'sql',
+      query,
+      queryType: 'INSERT',
+      explanation: `Inserting new record into ${table.name} with ${columns.length} field(s)`
+    };
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: UPDATE
+  // ──────────────────────────────────────────
+  handleUpdate(userQuery, lowerQuery, schema, selectedTable) {
+    const table = this.detectTable(userQuery, lowerQuery, schema, selectedTable);
+    if (!table) {
+      return {
+        type: 'clarification',
+        message: 'Which table would you like to update?',
+        suggestions: schema.tables.map(t => ({
+          label: t.name, value: `Update ${t.name}`, description: `${t.rowCount} rows`
+        }))
+      };
+    }
+
+    const setStatements = [];
+    const setFields = new Set();
+
+    for (const col of table.columns) {
+      if (setFields.has(col.name)) continue;
+      const fuzzyNames = this.getFuzzyNames(col.name);
+      for (const fName of fuzzyNames) {
+        const patterns = [
+          new RegExp(`\\b${this.escapeRegex(fName)}\\s*=\\s*['"]?([^,'"\\n]+?)['"]?(?:\\s|,|where|$)`, 'i'),
+          new RegExp(`\\b${this.escapeRegex(fName)}\\s+to\\s+['"]?([^,'"\\n]+?)['"]?(?:\\s|,|where|$)`, 'i'),
+          new RegExp(`set\\s+${this.escapeRegex(fName)}\\s+['"]?([^,'"\\s\\n]+?)['"]?`, 'i'),
+        ];
+        for (const pattern of patterns) {
+          const match = userQuery.match(pattern);
+          if (match && match[1]) {
+            let value = match[1].trim().replace(/^["']|["']$/g, '');
+            if (['where', 'and', 'or'].includes(value.toLowerCase())) continue;
+            if (col.type.toUpperCase().includes('INT')) {
+              const parsed = parseInt(value);
+              if (!isNaN(parsed)) { setStatements.push(`"${col.name}" = ${parsed}`); setFields.add(col.name); break; }
+            } else if (col.type.toUpperCase().includes('REAL') || col.type.toUpperCase().includes('FLOAT')) {
+              const parsed = parseFloat(value);
+              if (!isNaN(parsed)) { setStatements.push(`"${col.name}" = ${parsed}`); setFields.add(col.name); break; }
+            } else {
+              setStatements.push(`"${col.name}" = '${value.replace(/'/g, "''")}'`);
+              setFields.add(col.name); break;
+            }
+          }
+        }
+        if (setFields.has(col.name)) break;
+      }
+    }
+
+    if (setStatements.length === 0) {
+      // Generate dynamic examples based on actual columns
+      const exampleCol = table.columns.find(c =>
+        !c.primaryKey && (c.type.toUpperCase().includes('INT') || c.type.toUpperCase().includes('TEXT'))
+      ) || table.columns[1] || table.columns[0];
+
+      const exampleValue = exampleCol.type.toUpperCase().includes('INT') ? '100' : 'new_value';
+
+      return {
+        type: 'clarification',
+        message: `I need more details to update ${table.name}. Please specify:\n\n• What column to update?\n• What value to set?\n• Which rows to target?\n\nExample: "Update ${exampleCol.name} to ${exampleValue} where [condition]"`
+      };
+    }
+
+    const whereClause = this.buildWhereClause(userQuery, lowerQuery, table);
+    if (!whereClause) {
+      const columnName = setStatements[0].split('=')[0].trim().replace(/"/g, '');
+      const sampleValue = setStatements[0].split('=')[1].trim();
+      const idCol = table.columns.find(c => c.primaryKey) || table.columns[0];
+
+      return {
+        type: 'clarification',
+        message: `⚠️ This will update ALL ${table.rowCount || ''} rows in ${table.name}!\n\nPlease specify which rows to update:\n\nExample: "Update ${columnName} to ${sampleValue} where ${idCol.name} = [value]"`
+      };
+    }
+
+    return {
+      type: 'sql',
+      query: `UPDATE "${table.name}" SET ${setStatements.join(', ')}${whereClause}`,
+      queryType: 'UPDATE',
+      explanation: `Updating records in ${table.name}${whereClause.replace(' WHERE ', ' where ')}`
+    };
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: DELETE
+  // ──────────────────────────────────────────
+  handleDelete(userQuery, lowerQuery, schema, selectedTable, conversationHistory = []) {
+    const table = this.detectTable(userQuery, lowerQuery, schema, selectedTable);
+    if (!table) {
+      return {
+        type: 'clarification',
+        message: 'Which table would you like to delete from?',
+        suggestions: schema.tables.map(t => ({
+          label: t.name, value: `Delete from ${t.name}`, description: `${t.rowCount} rows`
+        }))
+      };
+    }
+
+    // Build WHERE clause from the query
+    let whereClause = this.buildWhereClause(userQuery, lowerQuery, table);
+
+    // If no WHERE from standard parsing, try to extract value directly
+    // e.g., "remove employee name keera" or "delete keera from employee"
+    if (!whereClause) {
+      whereClause = this.extractDeleteTarget(userQuery, lowerQuery, table);
+    }
+
+    if (!whereClause) {
+      const nameCol = table.columns.find(c =>
+        c.name.toLowerCase().includes('name')
+      );
+      const idCol = table.columns.find(c => c.primaryKey) || table.columns[0];
+      const numCol = table.columns.find(c =>
+        c.type.toUpperCase().includes('INT') || c.type.toUpperCase().includes('REAL')
+      );
+
+      const examples = [];
+      if (nameCol) examples.push(`Delete from ${table.name} where ${nameCol.name} is "value"`);
+      if (idCol) examples.push(`Delete from ${table.name} where ${idCol.name} = 1`);
+      if (numCol) examples.push(`Delete from ${table.name} where ${numCol.name} < 100`);
+
+      return {
+        type: 'clarification',
+        message: `Please specify which record(s) to delete from ${table.name}.\n\nExamples:\n${examples.map(ex => `• ${ex}`).join('\n')}`,
+        suggestions: [
+          nameCol && { label: `By ${nameCol.name}`, value: `Delete from ${table.name} where ${nameCol.name} is "value"`, description: `Delete by ${nameCol.name} match` },
+          idCol && { label: `By ${idCol.name}`, value: `Delete from ${table.name} where ${idCol.name} = 1`, description: 'Delete specific record' },
+          { label: 'By condition', value: `Delete from ${table.name} where salary < 3000`, description: 'Delete matching records' }
+        ]
+      };
+    }
+
+    return {
+      type: 'sql',
+      query: `DELETE FROM "${table.name}"${whereClause}`,
+      queryType: 'DELETE',
+      explanation: `Deleting records from ${table.name}${whereClause.replace(' WHERE ', ' where ')}`
+    };
+  }
+
+  extractDeleteTarget(userQuery, lowerQuery, table) {
+    // Try to find a value that's meant to identify the record
+    // "remove employee name keera" → WHERE FIRST_NAME = 'keera'
+    // "delete keera" → WHERE FIRST_NAME = 'keera'
+    // "remove employee Keera" → WHERE FIRST_NAME = 'Keera'
+
+    const tableName = table.name.toLowerCase();
+
+    // Check for "name value" pattern FIRST (most explicit)
+    const nameValueMatch = userQuery.match(/\b(?:name|first_name|fname|names)\s+(?:is\s+)?["']?(\w+)["']?/i);
+    if (nameValueMatch) {
+      const nameCol = table.columns.find(c =>
+        c.name.toLowerCase().includes('first_name') || c.name.toLowerCase() === 'name' || c.name.toLowerCase().includes('name')
+      );
+      if (nameCol) {
+        return ` WHERE LOWER("${nameCol.name}") = LOWER('${nameValueMatch[1].replace(/'/g, "''")}')`;
+      }
+    }
+
+    // Remove known keywords
+    let cleaned = lowerQuery
+      .replace(/\b(delete|remove|from|employee|student|hospital|record|row|entry|the|a|an|name|names)\b/g, '')
+      .replace(new RegExp(`\\b${this.escapeRegex(tableName)}\\b`, 'g'), '')
+      .trim();
+
+    // If there's a remaining word that looks like a name/value
+    if (cleaned.length > 0) {
+      const words = cleaned.split(/\s+/).filter(w => w.length > 1);
+      if (words.length >= 1) {
+        // Take the first meaningful word as the value to delete
+        const textCol = table.columns.find(c =>
+          c.name.toLowerCase().includes('first_name') || c.name.toLowerCase() === 'name' || c.name.toLowerCase().includes('name')
+        ) || table.columns.find(c => !c.type.toUpperCase().includes('INT') && !c.primaryKey);
+
+        if (textCol) {
+          // Use original case from userQuery - find the word in original query
+          const originalWord = userQuery.match(new RegExp(`\\b${words[0]}\\b`, 'i'));
+          const val = originalWord ? originalWord[0] : words[0];
+          return ` WHERE LOWER("${textCol.name}") = LOWER('${val.replace(/'/g, "''")}')`;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  // ──────────────────────────────────────────
+  // HANDLER: Unknown
+  // ──────────────────────────────────────────
+  handleUnknown(userQuery, schema) {
+    const tableNames = schema.tables.map(t => t.name).join(', ');
+    return {
+      type: 'clarification',
+      message: `I'm not sure how to help with that. Here are things I can do:\n\n` +
+        `**Available tables:** ${tableNames}\n\n` +
+        `**Query data:**\n` +
+        `- "Show all employees"\n` +
+        `- "Find names starting with S"\n` +
+        `- "Employees with salary > 10000"\n` +
+        `- "Average salary by department"\n\n` +
+        `**Modify data:**\n` +
+        `- "Insert employee name John salary 5000"\n` +
+        `- "Update salary to 6000 where name is John"\n` +
+        `- "Delete from employee where name is John"\n\n` +
+        `**Schema:**\n` +
+        `- "Show all tables" / "Show constraints" / "Show keys"\n` +
+        `- "Create table School with columns name, location"`,
+      suggestions: [
+        { label: 'View tables', value: 'Show all tables', description: 'List all database tables' },
+        { label: 'View data', value: `Show all data from ${schema.tables[0]?.name || 'TABLE'}`, description: 'Display table contents' },
+        { label: 'Schema info', value: 'Show constraints', description: 'Show keys and constraints' }
+      ]
+    };
+  }
+
+  // ──────────────────────────────────────────
+  // LLM INTEGRATION
+  // ──────────────────────────────────────────
+  async useGemini(userQuery, schema, conversationHistory) {
+    const prompt = this.buildLLMPrompt(userQuery, schema, conversationHistory);
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${this.geminiApiKey}`,
+      {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+      }
+    );
+    const generatedText = response.data.candidates[0].content.parts[0].text;
+    return this.parseResponse(generatedText, schema);
+  }
+
+  async useLocalLLM(userQuery, schema, conversationHistory) {
+    const prompt = this.buildLLMPrompt(userQuery, schema, conversationHistory);
+    const response = await axios.post(`${this.localModelUrl}/api/generate`, {
+      model: 'llama2', prompt, stream: false
+    });
+    return this.parseResponse(response.data.response, schema);
+  }
+
+  buildLLMPrompt(userQuery, schema, conversationHistory) {
+    let prompt = `You are an expert SQL query generator. Convert natural language to SQLite queries.
+
+DATABASE SCHEMA:
+${this.formatSchemaForPrompt(schema)}
+
+RULES:
+1. Generate valid SQLite syntax only
+2. Use double quotes for identifiers
+3. CLARIFY: [question] for ambiguous queries
+4. INFO: [answer] for non-SQL questions
+5. Limit SELECT to 100 rows unless specified
+6. Always WHERE for UPDATE/DELETE unless user says "all"
+7. LOWER() for case-insensitive string comparisons
+8. LIKE with % for pattern matching
+9. Support aggregates: COUNT, SUM, AVG, MIN, MAX with GROUP BY
+10. Support ORDER BY, DISTINCT, BETWEEN
+
+`;
+    if (conversationHistory.length > 0) {
+      prompt += `\nCONVERSATION:\n`;
+      conversationHistory.slice(-3).forEach(msg => {
+        prompt += `${msg.role}: ${msg.content}\n`;
+      });
+    }
+    prompt += `\nUSER: ${userQuery}\n\nRESPOND:\n- CLARIFY: [question]\n- INFO: [answer]\n- SQL: [query]\n\nResponse:`;
+    return prompt;
+  }
+
+  formatSchemaForPrompt(schema) {
+    let formatted = '';
+    schema.tables.forEach(table => {
+      formatted += `\nTable: ${table.name} (${table.rowCount} rows)\nColumns:\n`;
+      table.columns.forEach(col => {
+        const constraints = [];
+        if (col.primaryKey) constraints.push('PRIMARY KEY');
+        if (col.notNull) constraints.push('NOT NULL');
+        formatted += `  - ${col.name}: ${col.type}${constraints.length > 0 ? ` (${constraints.join(', ')})` : ''}\n`;
+      });
+      if (table.foreignKeys && table.foreignKeys.length > 0) {
+        formatted += 'Foreign Keys:\n';
+        table.foreignKeys.forEach(fk => { formatted += `  - ${fk.from} -> ${fk.table}(${fk.to})\n`; });
+      }
+    });
+    return formatted;
+  }
+
+  parseResponse(responseText, schema) {
+    const trimmed = responseText.trim();
+    if (trimmed.includes('CLARIFY:')) {
+      return { type: 'clarification', message: trimmed.split('CLARIFY:')[1].trim() };
+    }
+    if (trimmed.includes('INFO:')) {
+      return { type: 'info', message: trimmed.split('INFO:')[1].trim() };
+    }
+    let sqlQuery = '';
+    if (trimmed.includes('SQL:')) {
+      sqlQuery = trimmed.split('SQL:')[1].trim();
+    } else {
+      const codeBlockMatch = trimmed.match(/```sql\n([\s\S]*?)\n```/);
+      sqlQuery = codeBlockMatch ? codeBlockMatch[1].trim() : trimmed;
+    }
+    sqlQuery = sqlQuery.replace(/```/g, '').trim();
+    if (sqlQuery.endsWith(';')) sqlQuery = sqlQuery.slice(0, -1);
+
+    const validation = this.validateQuery(sqlQuery);
+    if (!validation.valid) return { type: 'error', message: validation.error };
+
+    const queryType = this.getQueryType(sqlQuery);
+    return { type: 'sql', query: sqlQuery, queryType, explanation: this.explainQuery(sqlQuery, queryType) };
+  }
+
+  validateQuery(query) {
+    if (!query || query.length === 0) return { valid: false, error: 'Empty query' };
+    const upperQuery = query.toUpperCase();
+    for (const cmd of ['DROP', 'TRUNCATE']) {
+      if (upperQuery.startsWith(cmd)) return { valid: false, error: `${cmd} operations require explicit confirmation` };
+    }
+    return { valid: true };
+  }
+
+  getQueryType(query) {
+    const u = query.toUpperCase().trim();
+    if (u.startsWith('SELECT') || u.startsWith('PRAGMA')) return 'SELECT';
+    if (u.startsWith('INSERT')) return 'INSERT';
+    if (u.startsWith('UPDATE')) return 'UPDATE';
+    if (u.startsWith('DELETE')) return 'DELETE';
+    if (u.startsWith('CREATE')) return 'CREATE';
+    if (u.startsWith('ALTER')) return 'ALTER';
+    if (u.startsWith('DROP')) return 'DROP';
+    return 'UNKNOWN';
+  }
+
+  explainQuery(query, queryType) {
+    return {
+      'SELECT': 'Retrieving data', 'INSERT': 'Adding new record', 'UPDATE': 'Modifying records',
+      'DELETE': 'Removing records', 'CREATE': 'Creating table', 'ALTER': 'Modifying structure', 'DROP': 'Deleting object'
+    }[queryType] || 'Executing operation';
+  }
+}
+
+module.exports = new NLPToSQLV3();
