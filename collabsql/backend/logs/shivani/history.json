@@ -93,5 +93,122 @@
     "timestamp": "2026-02-10T20:59:32.514053",
     "nl": "june",
     "sql": "SELECT * FROM EMPLOYEE WHERE strftime('%m', HIRE_DATE) = '06'"
+  },
+  {
+    "timestamp": "2026-02-10T22:32:03.008266",
+    "nl": "How many rows in STUDENT?",
+    "sql": "SELECT COUNT(*) FROM STUDENT"
+  },
+  {
+    "timestamp": "2026-02-10T22:48:27.515781",
+    "nl": "What is a primary key?",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 809,
+      "response_tokens": 93,
+      "total_tokens": 959
+    }
+  },
+  {
+    "timestamp": "2026-02-10T22:52:02.472451",
+    "nl": "Show all data from EMPLOYEE",
+    "sql": "SELECT * FROM \"EMPLOYEE\"",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T22:55:10.629663",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\"",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T22:56:18.164101",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\"",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T22:57:53.271966",
+    "nl": "names of employees that starts with \"A\"",
+    "sql": "SELECT * FROM \"EMPLOYEE\" WHERE UPPER(\"FIRST_NAME\") LIKE 'A%'",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T23:39:35.990799",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T23:42:23.935416",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T23:43:39.179099",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T23:45:17.857059",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T23:47:05.474816",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T23:49:59.488071",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-10T23:56:14.378638",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-11T00:17:32.608305",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-11T00:20:41.534300",
+    "nl": "Top 5 employees by salary",
+    "sql": "SELECT * FROM \"EMPLOYEE\" ORDER BY \"SALARY\" DESC LIMIT 5",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-11T00:21:14.464340",
+    "nl": "names of employees that starts with \"S\" and ends with \"d\"",
+    "sql": "SELECT * FROM \"EMPLOYEE\" WHERE UPPER(\"FIRST_NAME\") LIKE 'S%'",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-11T00:31:28.442990",
+    "nl": "names of employees that starts with \"S\" and ends with \"d\"",
+    "sql": "SELECT * FROM \"EMPLOYEE\" WHERE UPPER(\"FIRST_NAME\") LIKE 'S%'",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-11T00:32:25.444984",
+    "nl": "names of employees that starts with \"S\" and ends with \"d\"",
+    "sql": "SELECT * FROM \"EMPLOYEE\" WHERE UPPER(\"FIRST_NAME\") LIKE 'S%'",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-11T00:34:29.722755",
+    "nl": "names of employees that starts with \"S\" and ends with \"d\"",
+    "sql": "SELECT * FROM \"EMPLOYEE\" WHERE UPPER(\"FIRST_NAME\") LIKE 'S%'",
+    "tokens": null
   }
 ]

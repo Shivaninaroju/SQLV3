@@ -25,10 +25,10 @@ JWT_ALGORITHM = "HS256"
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads/databases")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app = FastAPI(title="CollabSQL API")
+api_app = FastAPI(title="CollabSQL API")
 
 # Setup CORS
-app.add_middleware(
+api_app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Adjust in production
     allow_credentials=True,
@@ -38,7 +38,7 @@ app.add_middleware(
 
 # Socket.io Setup
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
-socket_app = socketio.ASGIApp(sio, app)
+app = socketio.ASGIApp(sio, api_app)
 
 # Pydantic Models
 class UserRegister(BaseModel):
@@ -78,7 +78,7 @@ async def get_current_user(request: Request):
 
 # --- AUTH ROUTES ---
 
-@app.post("/api/auth/register")
+@api_app.post("/api/auth/register")
 async def register(user: UserRegister):
     existing = db_manager.get_system_row("SELECT id FROM users WHERE email = ? OR username = ?", (user.email, user.username))
     if existing:
@@ -99,7 +99,7 @@ async def register(user: UserRegister):
         "token": token
     }
 
-@app.post("/api/auth/login")
+@api_app.post("/api/auth/login")
 async def login(user_data: UserLogin):
     user = db_manager.get_system_row("SELECT * FROM users WHERE email = ?", (user_data.email,))
     if not user or not bcrypt.checkpw(user_data.password.encode('utf-8'), user["password_hash"].encode('utf-8')):
@@ -114,23 +114,23 @@ async def login(user_data: UserLogin):
         "token": token
     }
 
-@app.get("/api/auth/me")
+@api_app.get("/api/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
     user = db_manager.get_system_row("SELECT id, email, username FROM users WHERE id = ?", (current_user["userId"],))
     return {"user": user}
 
-@app.get("/api/auth/verify")
+@api_app.get("/api/auth/verify")
 async def verify_token(current_user: dict = Depends(get_current_user)):
     user = db_manager.get_system_row("SELECT id, email, username FROM users WHERE id = ?", (current_user["userId"],))
     return {"valid": True, "user": user}
 
-@app.post("/api/auth/logout")
+@api_app.post("/api/auth/logout")
 async def logout_user():
     return {"message": "Logged out"}
 
 # --- DATABASE ROUTES ---
 
-@app.post("/api/database/upload")
+@api_app.post("/api/database/upload")
 async def upload_database(name: str = Body(...), file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     file_ext = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_ext}"
@@ -176,7 +176,7 @@ async def upload_database(name: str = Body(...), file: UploadFile = File(...), c
 
     return {"id": result["lastID"], "name": name, "message": "Database uploaded successfully"}
 
-@app.get("/api/database/list")
+@api_app.get("/api/database/list")
 async def list_databases(current_user: dict = Depends(get_current_user)):
     databases = db_manager.get_system_rows(
         "SELECT * FROM databases WHERE owner_id = ?",
@@ -210,7 +210,7 @@ def _extract_schema(file_path: str) -> dict:
     return schema
 
 
-@app.get("/api/database/{database_id}")
+@api_app.get("/api/database/{database_id}")
 async def get_database_details(database_id: int, current_user: dict = Depends(get_current_user)):
     db = db_manager.get_system_row(
         "SELECT d.*, u.username as owner_username FROM databases d JOIN users u ON d.owner_id = u.id WHERE d.id = ?",
@@ -265,7 +265,7 @@ async def get_database_details(database_id: int, current_user: dict = Depends(ge
     }
 
 
-@app.get("/api/database/{database_id}/schema")
+@api_app.get("/api/database/{database_id}/schema")
 async def get_database_schema(database_id: int, refresh: bool = False, current_user: dict = Depends(get_current_user)):
     db = db_manager.get_system_row("SELECT file_path FROM databases WHERE id = ?", (database_id,))
     if not db:
@@ -287,7 +287,7 @@ async def get_database_schema(database_id: int, refresh: bool = False, current_u
     return {"schema": schema}
 
 
-@app.get("/api/database/{database_id}/analytics")
+@api_app.get("/api/database/{database_id}/analytics")
 async def get_database_analytics(database_id: int, current_user: dict = Depends(get_current_user)):
     schema_row = db_manager.get_system_row(
         "SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1",
@@ -304,7 +304,7 @@ async def get_database_analytics(database_id: int, current_user: dict = Depends(
 
 
 
-@app.get("/api/database/{database_id}/download")
+@api_app.get("/api/database/{database_id}/download")
 async def download_database(database_id: int, current_user: dict = Depends(get_current_user)):
     from fastapi.responses import FileResponse
     db = db_manager.get_system_row("SELECT file_path, original_filename FROM databases WHERE id = ?", (database_id,))
@@ -313,7 +313,7 @@ async def download_database(database_id: int, current_user: dict = Depends(get_c
     return FileResponse(path=db["file_path"], filename=db["original_filename"], media_type="application/x-sqlite3")
 
 
-@app.delete("/api/database/{database_id}")
+@api_app.delete("/api/database/{database_id}")
 async def delete_database(database_id: int, current_user: dict = Depends(get_current_user)):
     db = db_manager.get_system_row("SELECT * FROM databases WHERE id = ? AND owner_id = ?", (database_id, current_user["userId"]))
     if not db:
@@ -330,7 +330,7 @@ async def delete_database(database_id: int, current_user: dict = Depends(get_cur
     return {"message": "Database deleted successfully"}
 
 
-@app.get("/api/database/{database_id}/table/{table_name}/sample")
+@api_app.get("/api/database/{database_id}/table/{table_name}/sample")
 async def get_sample_data(database_id: int, table_name: str, limit: int = 5, current_user: dict = Depends(get_current_user)):
     import sqlite3
     db = db_manager.get_system_row("SELECT file_path FROM databases WHERE id = ?", (database_id,))
@@ -347,7 +347,7 @@ async def get_sample_data(database_id: int, table_name: str, limit: int = 5, cur
 
 # --- QUERY ROUTES ---
 
-@app.post("/api/query/nl")
+@api_app.post("/api/query/nl")
 async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)):
     schema_row = db_manager.get_system_row(
         "SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1",
@@ -369,7 +369,7 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
     )
     return result
 
-@app.get("/api/query/suggestions/{database_id}")
+@api_app.get("/api/query/suggestions/{database_id}")
 async def get_suggestions(database_id: int, current_user: dict = Depends(get_current_user)):
     schema_row = db_manager.get_system_row(
         "SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1",
@@ -386,7 +386,7 @@ async def get_suggestions(database_id: int, current_user: dict = Depends(get_cur
     return {"suggestions": suggestions}
 
 
-@app.post("/api/query/execute")
+@api_app.post("/api/query/execute")
 async def execute_sql(data: SQLExecute, current_user: dict = Depends(get_current_user)):
     db_row = db_manager.get_system_row("SELECT file_path FROM databases WHERE id = ?", (data.databaseId,))
     if not db_row:
@@ -440,7 +440,7 @@ async def execute_sql(data: SQLExecute, current_user: dict = Depends(get_current
 
 # --- HISTORY ROUTES ---
 
-@app.get("/api/history/{database_id}")
+@api_app.get("/api/history/{database_id}")
 async def get_history(database_id: int, current_user: dict = Depends(get_current_user)):
     commits = db_manager.get_system_rows(
         "SELECT c.*, u.username FROM commits c JOIN users u ON c.user_id = u.id WHERE c.database_id = ? ORDER BY c.timestamp DESC LIMIT 50",
@@ -449,7 +449,7 @@ async def get_history(database_id: int, current_user: dict = Depends(get_current
     return {"commits": commits}
 
 
-@app.get("/api/history/{database_id}/stats")
+@api_app.get("/api/history/{database_id}/stats")
 async def get_history_stats(database_id: int, current_user: dict = Depends(get_current_user)):
     total = db_manager.get_system_row("SELECT COUNT(*) as count FROM commits WHERE database_id = ?", (database_id,))
     
@@ -468,7 +468,7 @@ async def get_history_stats(database_id: int, current_user: dict = Depends(get_c
 
 # --- COLLABORATION ROUTES ---
 
-@app.get("/api/collaboration/{database_id}/collaborators")
+@api_app.get("/api/collaboration/{database_id}/collaborators")
 async def get_collaborators(database_id: int, current_user: dict = Depends(get_current_user)):
     collaborators = db_manager.get_system_rows(
         "SELECT dp.*, u.username, u.email FROM database_permissions dp JOIN users u ON dp.user_id = u.id WHERE dp.database_id = ?",
@@ -477,7 +477,7 @@ async def get_collaborators(database_id: int, current_user: dict = Depends(get_c
     return {"collaborators": collaborators}
 
 
-@app.post("/api/collaboration/{database_id}/collaborators")
+@api_app.post("/api/collaboration/{database_id}/collaborators")
 async def add_collaborator(database_id: int, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
     user = db_manager.get_system_row("SELECT id FROM users WHERE email = ?", (data.get("userEmail"),))
     if not user:
@@ -490,7 +490,7 @@ async def add_collaborator(database_id: int, data: dict = Body(...), current_use
     return {"message": "Collaborator added"}
 
 
-@app.get("/api/collaboration/{database_id}/active")
+@api_app.get("/api/collaboration/{database_id}/active")
 async def get_active_users(database_id: int, current_user: dict = Depends(get_current_user)):
     return []
 
@@ -529,7 +529,8 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 5000))
     print(f"Starting CollabSQL Backend on port {port}...")
-    uvicorn.run(socket_app, host="0.0.0.0", port=port, log_level="info")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+
 
 
 

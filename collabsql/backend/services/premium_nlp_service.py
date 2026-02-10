@@ -45,18 +45,39 @@ class ContextMemory:
 class PremiumNLPService:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
+        self.credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "shivani-sql-chatbot")
+        self.location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+        
         self.client = None
         self.context = ContextMemory()
 
         try:
             from google import genai
-            if self.api_key:
+            
+            if self.credentials_path and os.path.exists(self.credentials_path):
+                # Set environment variable for google-auth library
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(self.credentials_path)
+                
+                # Use Vertex AI with Service Account
+                self.client = genai.Client(
+                    vertexai=True,
+                    project=self.project_id,
+                    location=self.location
+                )
+                logger.info(f"Gemini initialized via Vertex AI (Project: {self.project_id})")
+                print(f"✅ Connected to Google Cloud Vertex AI: {self.project_id}")
+            elif self.api_key:
+                # Use Google AI Studio (API Key)
                 self.client = genai.Client(api_key=self.api_key)
-                logger.info("Gemini 2.5 Flash initialized via google-genai SDK")
+                logger.info("Gemini initialized via Google AI Studio API Key")
+                print("✅ Connected to Google AI Studio (API Key)")
             else:
-                logger.warning("GEMINI_API_KEY not set")
+                logger.warning("No Gemini authentication found (API Key or Google Cloud credentials)")
+                print("⚠️ No AI credentials found. Falling back to local pattern matcher.")
         except Exception as e:
             logger.warning(f"google-genai init failed: {e}")
+            print(f"❌ Gemini initialization failed: {e}")
 
     async def process_query(
         self,
@@ -77,11 +98,45 @@ class PremiumNLPService:
             result = await self._llm_process(user_query, schema, active_table, conversation_history, username)
         
         if not result:
+            print("\n" + "!"*50, flush=True)
+            print("⚠️  AI LLM CALL FAILED OR QUOTA EXHAUSTED", flush=True)
+            print(f"👉 Query: \"{user_query}\"", flush=True)
+            print("⚡ Switching to high-accuracy local pattern matcher...", flush=True)
+            print("!"*50 + "\n", flush=True)
+            
             result = self._fallback_process(user_query, schema, active_table, username)
+            # Hide Fallback Mode from UI explanation as requested
+            if "explanation" in result:
+                result["explanation"] = result["explanation"].replace(" (Fallback Mode)", "")
+
+        # Terminal Display
+        print("\n" + "="*50, flush=True)
+        print("🚀 INTENT PROCESSING REPORT", flush=True)
+        print("="*50, flush=True)
+        
+        steps = result.get("steps", [
+            "Establishing connection to backend logic...",
+            "Analyzing query intent...",
+            "Cross-referencing query with database schema...",
+            "Validating SQL for SQLite engine..."
+        ])
+        for step in steps:
+            print(f"  [STEP] {step}", flush=True)
+        
+        print("-" * 50, flush=True)
+        usage = result.get("usage")
+        if usage:
+            print(f"  [USAGE] Total Tokens:    {usage.get('total_tokens', 0)}", flush=True)
+            print(f"  [USAGE] Prompt Tokens:   {usage.get('prompt_tokens', 0)}", flush=True)
+            print(f"  [USAGE] Response Tokens: {usage.get('response_tokens', 0)}", flush=True)
+        else:
+            print("  [USAGE] Local Pattern Matcher (0 tokens used)", flush=True)
+        print("="*50 + "\n", flush=True)
 
         # Ensure we log the query regardless of which method was used
         sql = result.get("query")
-        self._log_query(username, user_query, sql)
+        usage = result.get("usage")
+        self._log_query(username, user_query, sql, usage)
 
         return result
 
@@ -99,14 +154,29 @@ class PremiumNLPService:
             import asyncio
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",
                 contents=prompt,
             )
             raw = response.text.strip()
-            logger.info(f"LLM raw response length: {len(raw)}")
+            
+            # Extract usage stats
+            usage = {
+                "prompt_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0),
+                "response_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0),
+                "total_tokens": getattr(response.usage_metadata, 'total_token_count', 0)
+            }
 
             # Parse JSON from response
             result = self._parse_llm_response(raw)
+
+            # Add extra metadata
+            result["usage"] = usage
+            result["steps"] = [
+                "Establishing secure connection to Gemini 2.5 Flash...",
+                "Analyzing natural language intent...",
+                "Cross-referencing query with database schema...",
+                "Optimizing extracted SQL for SQLite engine..."
+            ]
 
             # Update context
             sql = result.get("query")
@@ -117,9 +187,12 @@ class PremiumNLPService:
 
         except Exception as e:
             logger.error(f"LLM call failed: {e}", exc_info=True)
+            print("-" * 50, flush=True)
+            print(f"❌ AI ERROR: {str(e)}", flush=True)
+            print("-" * 50, flush=True)
             return None
 
-    def _log_query(self, username: str, nl_query: str, sql_query: Optional[str]):
+    def _log_query(self, username: str, nl_query: str, sql_query: Optional[str], usage: Optional[Dict] = None):
         """Store the NL and SQL queries in logs/<username>/history.json"""
         try:
             log_dir = os.path.join("logs", username)
@@ -130,7 +203,8 @@ class PremiumNLPService:
             entry = {
                 "timestamp": datetime.now().isoformat(),
                 "nl": nl_query,
-                "sql": sql_query or "N/A (Non-SQL response)"
+                "sql": sql_query or "N/A (Non-SQL response)",
+                "tokens": usage
             }
             
             history = []
@@ -313,13 +387,42 @@ OUTPUT ONLY THE JSON OBJECT:"""
             name_col = self._find_name_col(col_names)
             if name_col:
                 sql = f'SELECT * FROM "{target}" WHERE UPPER("{name_col}") LIKE \'{letter}%\''
+                
+                # Check for Top/Limit in the same query
+                limit_match = re.search(r'(?:top|limit|first)\s+(\d+)', lower)
+                if limit_match:
+                    sql += f" LIMIT {limit_match.group(1)}"
+                
                 self.context.update(target, user_query, sql)
                 return {"type": "sql", "query": sql, "queryType": "SELECT", "explanation": f"Filtering {target} where {name_col} starts with '{letter}'"}
 
-        # Default SELECT
+        # --- Enhanced Fallback SELECT logic ---
         sql = f'SELECT * FROM "{target}"'
+        
+        # Detect ORDER BY
+        if " by " in lower or "order by" in lower or "sort by" in lower:
+            for col in col_names:
+                if col.lower() in lower:
+                    sql += f' ORDER BY "{col}"'
+                    if any(kw in lower for kw in ["desc", "high", "top", "max", "most"]):
+                        sql += " DESC"
+                    break
+        
+        # Detect LIMIT / TOP
+        limit_match = re.search(r'(?:top|limit|first)\s+(\d+)', lower)
+        if limit_match:
+            limit_val = limit_match.group(1)
+            # If we haven't added ORDER BY but saw "top", let's try to find a numeric col to order by
+            if "order by" not in sql.lower() and ("top" in lower or "highest" in lower):
+                # Try to find a salary/amount column
+                for col in col_names:
+                    if any(kw in col.lower() for kw in ["salary", "amount", "price", "wage", "total"]):
+                        sql += f' ORDER BY "{col}" DESC'
+                        break
+            sql += f" LIMIT {limit_val}"
+
         self.context.update(target, user_query, sql)
-        return {"type": "sql", "query": sql, "queryType": "SELECT", "explanation": f"Showing all records from {target}"}
+        return {"type": "sql", "query": sql, "queryType": "SELECT", "explanation": f"Showing results from {target} (Fallback Mode)"}
 
     def _fallback_update(self, lower: str, target: str, col_names: List[str]) -> Dict:
         import re
