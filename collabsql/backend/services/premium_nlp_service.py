@@ -6,6 +6,7 @@ Single-pass LLM architecture: user query -> LLM generates complete response
 import os
 import json
 import logging
+from datetime import datetime
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
@@ -63,6 +64,7 @@ class PremiumNLPService:
         schema: Dict,
         conversation_history: List = None,
         selected_table: Optional[str] = None,
+        username: str = "anonymous"
     ) -> Dict:
         if conversation_history is None:
             conversation_history = []
@@ -70,10 +72,18 @@ class PremiumNLPService:
         # Use selected table or context table
         active_table = selected_table or self.context.active_table
 
+        result = None
         if self.client:
-            return await self._llm_process(user_query, schema, active_table, conversation_history)
-        else:
-            return self._fallback_process(user_query, schema, active_table)
+            result = await self._llm_process(user_query, schema, active_table, conversation_history, username)
+        
+        if not result:
+            result = self._fallback_process(user_query, schema, active_table, username)
+
+        # Ensure we log the query regardless of which method was used
+        sql = result.get("query")
+        self._log_query(username, user_query, sql)
+
+        return result
 
     async def _llm_process(
         self,
@@ -81,6 +91,7 @@ class PremiumNLPService:
         schema: Dict,
         active_table: Optional[str],
         conversation_history: List,
+        username: str
     ) -> Dict:
         prompt = self._build_prompt(user_query, schema, active_table, conversation_history)
 
@@ -106,7 +117,38 @@ class PremiumNLPService:
 
         except Exception as e:
             logger.error(f"LLM call failed: {e}", exc_info=True)
-            return self._fallback_process(user_query, schema, active_table)
+            return None
+
+    def _log_query(self, username: str, nl_query: str, sql_query: Optional[str]):
+        """Store the NL and SQL queries in logs/<username>/history.json"""
+        try:
+            log_dir = os.path.join("logs", username)
+            os.makedirs(log_dir, exist_ok=True)
+            
+            log_file = os.path.join(log_dir, "history.json")
+            
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "nl": nl_query,
+                "sql": sql_query or "N/A (Non-SQL response)"
+            }
+            
+            history = []
+            if os.path.exists(log_file):
+                try:
+                    with open(log_file, "r") as f:
+                        history = json.load(f)
+                except:
+                    history = []
+            
+            history.append(entry)
+            
+            with open(log_file, "w") as f:
+                json.dump(history, f, indent=2)
+                
+            logger.info(f"Logged query for user {username}")
+        except Exception as e:
+            logger.error(f"Failed to log query: {e}")
 
     def _parse_llm_response(self, raw: str) -> Dict:
         # Strip markdown code fences
@@ -214,7 +256,7 @@ OUTPUT ONLY THE JSON OBJECT:"""
 
     # ---- Fallback (no LLM available) ----
 
-    def _fallback_process(self, user_query: str, schema: Dict, active_table: Optional[str]) -> Dict:
+    def _fallback_process(self, user_query: str, schema: Dict, active_table: Optional[str], username: str = "anonymous") -> Dict:
         import re
         lower = user_query.lower().strip()
 

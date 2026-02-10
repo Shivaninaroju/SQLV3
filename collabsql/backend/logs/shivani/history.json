@@ -1,0 +1,97 @@
+[
+  {
+    "timestamp": "2026-02-10T20:40:45.024414",
+    "nl": "names that starts with \"S\"",
+    "sql": "SELECT * FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE 'S%'"
+  },
+  {
+    "timestamp": "2026-02-10T20:41:24.178018",
+    "nl": "name of the employee with highest salary",
+    "sql": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE ORDER BY SALARY DESC LIMIT 1"
+  },
+  {
+    "timestamp": "2026-02-10T20:41:41.838788",
+    "nl": "set last name of 'Jabili' as \"Pasunuri\"",
+    "sql": "UPDATE EMPLOYEE SET LAST_NAME = 'Pasunuri' WHERE FIRST_NAME = 'Jabili'"
+  },
+  {
+    "timestamp": "2026-02-10T20:42:20.502701",
+    "nl": "salary of \"Steven King\"",
+    "sql": "SELECT SALARY FROM EMPLOYEE WHERE FIRST_NAME = 'Steven' AND LAST_NAME = 'King'"
+  },
+  {
+    "timestamp": "2026-02-10T20:43:00.348903",
+    "nl": "update last name of \"Jabili \"as \"Pasunuri",
+    "sql": "UPDATE EMPLOYEE SET LAST_NAME = 'Pasunuri' WHERE FIRST_NAME = 'Jabili'"
+  },
+  {
+    "timestamp": "2026-02-10T20:43:13.481722",
+    "nl": "show employee details",
+    "sql": "SELECT * FROM EMPLOYEE"
+  },
+  {
+    "timestamp": "2026-02-10T20:43:46.834895",
+    "nl": "remove last name of \"Shiva Prasad\" and set it as \"Naroju\"",
+    "sql": "UPDATE EMPLOYEE SET LAST_NAME = 'Naroju' WHERE FIRST_NAME = 'Shiva Prasad'"
+  },
+  {
+    "timestamp": "2026-02-10T20:44:59.696579",
+    "nl": "insert employee name \"Shivani\"",
+    "sql": "INSERT INTO EMPLOYEE (FIRST_NAME) VALUES ('Shivani')"
+  },
+  {
+    "timestamp": "2026-02-10T20:46:22.700306",
+    "nl": "employees who joined in the month of \"June\"",
+    "sql": "SELECT * FROM EMPLOYEE WHERE strftime('%m', HIRE_DATE) = '06'"
+  },
+  {
+    "timestamp": "2026-02-10T20:46:31.528580",
+    "nl": "show their names",
+    "sql": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE WHERE strftime('%m', HIRE_DATE) = '06'"
+  },
+  {
+    "timestamp": "2026-02-10T20:47:00.394337",
+    "nl": "execute it and give me result",
+    "sql": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE WHERE strftime('%m', HIRE_DATE) = '06'"
+  },
+  {
+    "timestamp": "2026-02-10T20:48:26.113613",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)"
+  },
+  {
+    "timestamp": "2026-02-10T20:48:53.112028",
+    "nl": "What is AI?",
+    "sql": "N/A (Non-SQL response)"
+  },
+  {
+    "timestamp": "2026-02-10T20:50:15.310864",
+    "nl": "define LLM",
+    "sql": "N/A (Non-SQL response)"
+  },
+  {
+    "timestamp": "2026-02-10T20:51:06.721118",
+    "nl": "insert employee name \"Manjula\" with last name \"Naroju\" and hire date is 28 June 2026",
+    "sql": "INSERT INTO EMPLOYEE (FIRST_NAME, LAST_NAME, HIRE_DATE) VALUES ('Manjula', 'Naroju', '2026-06-28')"
+  },
+  {
+    "timestamp": "2026-02-10T20:51:32.745605",
+    "nl": "delete employee Diana",
+    "sql": "DELETE FROM EMPLOYEE WHERE FIRST_NAME = 'Diana'"
+  },
+  {
+    "timestamp": "2026-02-10T20:51:39.556099",
+    "nl": "show employees",
+    "sql": "SELECT * FROM EMPLOYEE"
+  },
+  {
+    "timestamp": "2026-02-10T20:53:05.329034",
+    "nl": "employees who joined in the month of\" Shiva\"",
+    "sql": "N/A (Non-SQL response)"
+  },
+  {
+    "timestamp": "2026-02-10T20:59:32.514053",
+    "nl": "june",
+    "sql": "SELECT * FROM EMPLOYEE WHERE strftime('%m', HIRE_DATE) = '06'"
+  }
+]

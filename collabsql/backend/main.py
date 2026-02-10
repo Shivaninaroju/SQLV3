@@ -357,11 +357,15 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Schema not found")
 
     schema = json.loads(schema_row["schema_json"])
+    # Pass username for logging
+    username = current_user.get("username", "anonymous")
+    
     result = await premium_nlp_service.process_query(
         data.query,
         schema,
         data.conversationHistory,
-        data.selectedTable
+        data.selectedTable,
+        username=username
     )
     return result
 
