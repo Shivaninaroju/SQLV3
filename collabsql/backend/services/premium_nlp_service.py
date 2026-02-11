@@ -16,65 +16,106 @@ logger = logging.getLogger(__name__)
 
 class ContextMemory:
     def __init__(self):
-        self.active_table: Optional[str] = None
-        self.last_query: Optional[str] = None
-        self.last_sql: Optional[str] = None
-        self.history: List[Dict] = []
+        self.user_contexts: Dict[str, Dict] = {}
 
-    def update(self, table: Optional[str], query: str, sql: Optional[str] = None):
+    def _get_context(self, username: str) -> Dict:
+        if username not in self.user_contexts:
+            self.user_contexts[username] = {
+                "active_table": None,
+                "last_query": None,
+                "last_sql": None,
+                "history": []
+            }
+        return self.user_contexts[username]
+
+    def update(self, username: str, table: Optional[str], query: str, sql: Optional[str] = None):
+        ctx = self._get_context(username)
         if table:
-            self.active_table = table
-        self.last_query = query
-        self.last_sql = sql
-        self.history.append({"query": query, "sql": sql, "table": table})
+            ctx["active_table"] = table
+        ctx["last_query"] = query
+        ctx["last_sql"] = sql
+        ctx["history"].append({"query": query, "sql": sql, "table": table})
         # Keep last 10 exchanges
-        if len(self.history) > 10:
-            self.history = self.history[-10:]
+        if len(ctx["history"]) > 10:
+            ctx["history"] = ctx["history"][-10:]
 
-    def get_summary(self) -> str:
+    def get_summary(self, username: str) -> str:
+        ctx = self._get_context(username)
         parts = []
-        if self.active_table:
-            parts.append(f"Active table: {self.active_table}")
-        if self.last_query:
-            parts.append(f"Last query: {self.last_query}")
-        if self.last_sql:
-            parts.append(f"Last SQL: {self.last_sql}")
+        if ctx["active_table"]:
+            parts.append(f"Active table: {ctx['active_table']}")
+        if ctx["last_query"]:
+            parts.append(f"Last query: {ctx['last_query']}")
+        if ctx["last_sql"]:
+            parts.append(f"Last SQL: {ctx['last_sql']}")
         return "\n".join(parts) if parts else "No prior context."
+
+    def get_active_table(self, username: str) -> Optional[str]:
+        return self._get_context(username)["active_table"]
 
 
 class PremiumNLPService:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.api_keys_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api_keys.json")
+        self.api_keys = self._load_api_keys()
+        self.current_key_index = 0
+        
         self.credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "shivani-sql-chatbot")
         self.location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
         
         self.client = None
         self.context = ContextMemory()
+        self.total_tokens_used = 0
 
+        self._init_client()
+
+    def _load_api_keys(self) -> List[str]:
+        """Load API keys from api_keys.json or fallback to .env"""
+        try:
+            if os.path.exists(self.api_keys_file):
+                with open(self.api_keys_file, "r") as f:
+                    data = json.load(f)
+                    keys = data.get("keys", [])
+                    # Filter out placeholders
+                    filtered_keys = [k for k in keys if k and "PASTE" not in k.upper() and len(k) > 10]
+                    if filtered_keys:
+                        logger.info(f"Loaded {len(filtered_keys)} valid API keys from rotation pool.")
+                        return filtered_keys
+            
+            # Fallback to .env
+            env_key = os.getenv("GEMINI_API_KEY")
+            if env_key and "PASTE" not in env_key.upper():
+                return [env_key]
+        except Exception as e:
+            logger.error(f"Error loading api_keys.json: {e}")
+        
+        return []
+
+    def _init_client(self):
+        """Initialize or re-initialize the Gemini client using the API key pool"""
         try:
             from google import genai
             
-            if self.credentials_path and os.path.exists(self.credentials_path):
-                # Set environment variable for google-auth library
+            if self.api_keys:
+                # Prioritize API Key rotation pool as requested
+                current_key = self.api_keys[self.current_key_index]
+                self.client = genai.Client(api_key=current_key)
+                logger.info(f"Gemini initialized via API Key Pool - Index {self.current_key_index}")
+                print(f"✅ Active Identity: Gemini API Key #{self.current_key_index + 1}")
+            elif self.credentials_path and os.path.exists(self.credentials_path):
+                # Fallback to Vertex AI only if no keys are provided
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(self.credentials_path)
-                
-                # Use Vertex AI with Service Account
                 self.client = genai.Client(
                     vertexai=True,
                     project=self.project_id,
                     location=self.location
                 )
-                logger.info(f"Gemini initialized via Vertex AI (Project: {self.project_id})")
+                logger.info(f"Gemini initialized via Vertex AI (Secondary Fallback)")
                 print(f"✅ Connected to Google Cloud Vertex AI: {self.project_id}")
-            elif self.api_key:
-                # Use Google AI Studio (API Key)
-                self.client = genai.Client(api_key=self.api_key)
-                logger.info("Gemini initialized via Google AI Studio API Key")
-                print("✅ Connected to Google AI Studio (API Key)")
             else:
-                logger.warning("No Gemini authentication found (API Key or Google Cloud credentials)")
-                print("⚠️ No AI credentials found. Falling back to local pattern matcher.")
+                logger.warning("No Gemini authentication found (API Key Pool is empty)")
+                print("⚠️ No AI credentials found in poll. Falling back to local engine.")
         except Exception as e:
             logger.warning(f"google-genai init failed: {e}")
             print(f"❌ Gemini initialization failed: {e}")
@@ -91,54 +132,72 @@ class PremiumNLPService:
             conversation_history = []
 
         # Use selected table or context table
-        active_table = selected_table or self.context.active_table
+        active_table = selected_table or self.context.get_active_table(username)
 
         result = None
         if self.client:
             result = await self._llm_process(user_query, schema, active_table, conversation_history, username)
         
         if not result:
-            print("\n" + "!"*50, flush=True)
-            print("⚠️  AI LLM CALL FAILED OR QUOTA EXHAUSTED", flush=True)
-            print(f"👉 Query: \"{user_query}\"", flush=True)
-            print("⚡ Switching to high-accuracy local pattern matcher...", flush=True)
-            print("!"*50 + "\n", flush=True)
-            
-            result = self._fallback_process(user_query, schema, active_table, username)
-            # Hide Fallback Mode from UI explanation as requested
-            if "explanation" in result:
-                result["explanation"] = result["explanation"].replace(" (Fallback Mode)", "")
+            logger.error(f"AI LLM Call failed for query: {user_query}")
+            return {
+                "type": "error",
+                "message": "The AI assistant is currently unavailable. Please check your Google Cloud configuration or try again in a moment.",
+                "steps": ["Attempted AI synthesis...", "AI connection failed."]
+            }
 
         # Terminal Display
-        print("\n" + "="*50, flush=True)
-        print("🚀 INTENT PROCESSING REPORT", flush=True)
-        print("="*50, flush=True)
+        # print("\n" + "="*50, flush=True)
+        # print("🚀 INTENT PROCESSING REPORT", flush=True)
+        # print("="*50, flush=True)
         
-        steps = result.get("steps", [
+        # Capture steps for terminal only
+        terminal_steps = result.get("steps", [
             "Establishing connection to backend logic...",
             "Analyzing query intent...",
             "Cross-referencing query with database schema...",
             "Validating SQL for SQLite engine..."
         ])
-        for step in steps:
-            print(f"  [STEP] {step}", flush=True)
+        # for step in terminal_steps:
+        #     print(f"  [STEP] {step}", flush=True)
         
-        print("-" * 50, flush=True)
+        # print("-" * 50, flush=True)
         usage = result.get("usage")
-        if usage:
-            print(f"  [USAGE] Total Tokens:    {usage.get('total_tokens', 0)}", flush=True)
-            print(f"  [USAGE] Prompt Tokens:   {usage.get('prompt_tokens', 0)}", flush=True)
-            print(f"  [USAGE] Response Tokens: {usage.get('response_tokens', 0)}", flush=True)
-        else:
-            print("  [USAGE] Local Pattern Matcher (0 tokens used)", flush=True)
-        print("="*50 + "\n", flush=True)
+        # if usage:
+        #     current_total = usage.get('total_tokens', 0)
+        #     self.total_tokens_used += current_total
+        #     available = 1048576  
+        #     remaining = max(0, available - self.total_tokens_used)
+            
+        #     print(f"  [USAGE] Current Query:   {current_total} tokens", flush=True)
+        #     print(f"  [USAGE] Remaining:       {remaining} / {available} tokens", flush=True)
+        #     print(f"  [USAGE] Prompt Tokens:   {usage.get('prompt_tokens', 0)}", flush=True)
+        #     print(f"  [USAGE] Response Tokens: {usage.get('response_tokens', 0)}", flush=True)
+        # else:
+        #     print("  [USAGE] Local Pattern Matcher (0 tokens used)", flush=True)
+        # print("="*50 + "\n", flush=True)
 
-        # Ensure we log the query regardless of which method was used
+        # Ensure we log the query
         sql = result.get("query")
-        usage = result.get("usage")
         self._log_query(username, user_query, sql, usage)
 
+        # STRIP technical info from user-facing result
+        if "steps" in result:
+            del result["steps"]
+        
         return result
+
+    def _rotate_key(self) -> bool:
+        """Switch to the next available API key in the pool"""
+        if not self.api_keys or len(self.api_keys) <= 1:
+            return False
+            
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        logger.info(f"Rotating to API Key #{self.current_key_index + 1}")
+        print(f"🔄 QUOTA EXHAUSTED: Rotating to Key #{self.current_key_index + 1}...")
+        
+        self._init_client()
+        return True
 
     async def _llm_process(
         self,
@@ -146,15 +205,16 @@ class PremiumNLPService:
         schema: Dict,
         active_table: Optional[str],
         conversation_history: List,
-        username: str
+        username: str,
+        retry_count: int = 0
     ) -> Dict:
-        prompt = self._build_prompt(user_query, schema, active_table, conversation_history)
+        prompt = self._build_prompt(user_query, schema, active_table, conversation_history, username)
 
         try:
             import asyncio
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model="gemini-1.5-flash",
+                model="gemini-2.5-flash",  # Forced to Gemini 2.5 Flash as requested
                 contents=prompt,
             )
             raw = response.text.strip()
@@ -172,7 +232,8 @@ class PremiumNLPService:
             # Add extra metadata
             result["usage"] = usage
             result["steps"] = [
-                "Establishing secure connection to Gemini 2.5 Flash...",
+                f"Identity Verified: Using API Key #{self.current_key_index + 1}...",
+                "Activating Gemini 2.5 Flash Neural Engine...",
                 "Analyzing natural language intent...",
                 "Cross-referencing query with database schema...",
                 "Optimizing extracted SQL for SQLite engine..."
@@ -181,16 +242,40 @@ class PremiumNLPService:
             # Update context
             sql = result.get("query")
             table = result.get("target_table") or active_table
-            self.context.update(table, user_query, sql)
+            self.context.update(username, table, user_query, sql)
 
             return result
 
         except Exception as e:
+            error_msg = str(e)
+            is_quota_error = "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg
+            
             logger.error(f"LLM call failed: {e}", exc_info=True)
-            print("-" * 50, flush=True)
-            print(f"❌ AI ERROR: {str(e)}", flush=True)
-            print("-" * 50, flush=True)
-            return None
+            # print("-" * 50, flush=True)
+            print(f"❌ AI ERROR: {error_msg}", flush=True)
+            # print("-" * 50, flush=True)
+            
+            if is_quota_error or "invalid" in error_msg.lower() or "not found" in error_msg.lower():
+                if retry_count < len(self.api_keys) - 1:
+                    print(f"🔄 FAILOVER: Key #{self.current_key_index + 1} failed. Escalating to next...")
+                    if self._rotate_key():
+                        # Retry with the new key
+                        return await self._llm_process(
+                            user_query, schema, active_table, conversation_history, username, 
+                            retry_count=retry_count + 1
+                        )
+                
+                return {
+                    "type": "error",
+                    "message": "AI Quota Exceeded across all available API keys. Please try again tomorrow or add more keys to api_keys.json.",
+                    "steps": ["Analyzing request limits...", "Quota exhaustion detected.", "All pools exhausted."]
+                }
+            
+            return {
+                "type": "error",
+                "message": f"AI Engine Error: {error_msg}. (Model: {os.getenv('GEMINI_MODEL', 'gemini-1.5-flash-latest')})",
+                "steps": ["Analyzing connection...", "Error detected.", "Synthesis aborted."]
+            }
 
     def _log_query(self, username: str, nl_query: str, sql_query: Optional[str], usage: Optional[Dict] = None):
         """Store the NL and SQL queries in logs/<username>/history.json"""
@@ -260,6 +345,7 @@ class PremiumNLPService:
         schema: Dict,
         active_table: Optional[str],
         conversation_history: List,
+        username: str
     ) -> str:
         # Build schema string
         tables_info = []
@@ -281,7 +367,7 @@ class PremiumNLPService:
                 conv_lines.append(f"  {role}: {content}")
             conv_str = "\n".join(conv_lines)
 
-        context_str = self.context.get_summary()
+        context_str = self.context.get_summary(username)
 
         return f"""You are a premium AI database assistant. You help users query SQLite databases using natural language.
 
@@ -312,7 +398,7 @@ RESPONSE TYPES:
 {{"type": "clarification", "message": "<one specific clarifying question>"}}
 
 CRITICAL RULES:
-- For "names starting with S" on the EMPLOYEE table: generate SELECT * FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE 'S%'
+- For "names starting with S and ending with D": generate SELECT * FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE 'S%D'
 - For "update last name 'Jabili' to 'Pasunuri'": generate UPDATE EMPLOYEE SET LAST_NAME = 'Pasunuri' WHERE FIRST_NAME = 'Jabili' (or closest match on the name columns)
 - If a table is active/selected and the user doesn't mention a specific table, USE the active table.
 - For UPDATE/INSERT/DELETE, set queryType to "WRITE".
@@ -380,21 +466,42 @@ OUTPUT ONLY THE JSON OBJECT:"""
             self.context.update(target, user_query, sql)
             return {"type": "sql", "query": sql, "queryType": "SELECT", "explanation": f"Counting records in {target}"}
 
-        # Names starting with pattern
-        match = re.search(r'(?:names?|starting|starts)\s+(?:starting|starts)?\s*with\s+["\']?([a-zA-Z]+)["\']?', lower)
-        if match:
-            letter = match.group(1).upper()
-            name_col = self._find_name_col(col_names)
-            if name_col:
-                sql = f'SELECT * FROM "{target}" WHERE UPPER("{name_col}") LIKE \'{letter}%\''
+        # Names starting/ending with patterns
+        name_col = self._find_name_col(col_names)
+        if name_col:
+            # Check for starts with
+            starts_match = re.search(r'(?:starts?|starting)\s+with\s+["\']?([a-zA-Z]+)["\']?', lower)
+            # Check for ends with
+            ends_match = re.search(r'(?:ends?|ending)\s+with\s+["\']?([a-zA-Z]+)["\']?', lower)
+            
+            if starts_match or ends_match:
+                conditions = []
+                explanations = []
                 
-                # Check for Top/Limit in the same query
+                if starts_match:
+                    prefix = starts_match.group(1).upper()
+                    conditions.append(f'UPPER("{name_col}") LIKE \'{prefix}%\'')
+                    explanations.append(f"starts with '{prefix}'")
+                
+                if ends_match:
+                    suffix = ends_match.group(1).upper()
+                    conditions.append(f'UPPER("{name_col}") LIKE \'%{suffix}\'')
+                    explanations.append(f"ends with '{suffix}'")
+                
+                sql = f'SELECT * FROM "{target}" WHERE ' + " AND ".join(conditions)
+                
+                # Check for Top/Limit
                 limit_match = re.search(r'(?:top|limit|first)\s+(\d+)', lower)
                 if limit_match:
                     sql += f" LIMIT {limit_match.group(1)}"
                 
                 self.context.update(target, user_query, sql)
-                return {"type": "sql", "query": sql, "queryType": "SELECT", "explanation": f"Filtering {target} where {name_col} starts with '{letter}'"}
+                return {
+                    "type": "sql", 
+                    "query": sql, 
+                    "queryType": "SELECT", 
+                    "explanation": f"Filtering {target} where {name_col} " + " and ".join(explanations)
+                }
 
         # --- Enhanced Fallback SELECT logic ---
         sql = f'SELECT * FROM "{target}"'

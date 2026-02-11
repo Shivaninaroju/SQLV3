@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, Body
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, Body, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import jwt
@@ -131,13 +131,53 @@ async def logout_user():
 # --- DATABASE ROUTES ---
 
 @api_app.post("/api/database/upload")
-async def upload_database(name: str = Body(...), file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    file_ext = os.path.splitext(file.filename)[1]
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
+async def upload_database(name: str = Form(...), file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    
+    # Check if it's a CSV or a SQLite file
+    if file_ext not in [".db", ".sqlite", ".sqlite3", ".csv"]:
+        raise HTTPException(status_code=400, detail="Unsupported file format. Please upload .db, .sqlite, .sqlite3 or .csv")
+
+    unique_filename = f"{uuid.uuid4()}.db" # Save as .db even if it's a CSV
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    if file_ext == ".csv":
+        import csv
+        import sqlite3
+        import io
+        
+        # Read CSV content
+        content = await file.read()
+        try:
+            stream = io.StringIO(content.decode('utf-8'))
+        except UnicodeDecodeError:
+            stream = io.StringIO(content.decode('latin-1'))
+        
+        reader = csv.reader(stream)
+        headers = next(reader)
+        
+        # Sanitize headers for SQLite
+        sanitized_headers = [h.strip().replace(" ", "_").replace("-", "_") for h in headers]
+        table_name = os.path.splitext(file.filename)[0].strip().replace(" ", "_").replace("-", "_")
+        if not table_name: table_name = "data"
+        
+        # Create SQLite database from CSV
+        conn = sqlite3.connect(file_path)
+        cursor = conn.cursor()
+        
+        # Create table
+        cols = ", ".join([f"\"{h}\" TEXT" for h in sanitized_headers])
+        cursor.execute(f"CREATE TABLE \"{table_name}\" ({cols})")
+        
+        # Insert data
+        placeholders = ", ".join(["?" for _ in sanitized_headers])
+        cursor.executemany(f"INSERT INTO \"{table_name}\" VALUES ({placeholders})", reader)
+        
+        conn.commit()
+    else:
+        # Standard SQLite file upload
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
     
     result = db_manager.run_system_query(
         "INSERT INTO databases (name, original_filename, file_path, owner_id) VALUES (?, ?, ?, ?)",
@@ -149,7 +189,7 @@ async def upload_database(name: str = Body(...), file: UploadFile = File(...), c
         import sqlite3
         conn = sqlite3.connect(file_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         tables = [row[0] for row in cursor.fetchall()]
         
         schema = {"tables": []}
@@ -188,25 +228,31 @@ async def list_databases(current_user: dict = Depends(get_current_user)):
 def _extract_schema(file_path: str) -> dict:
     """Helper to extract schema from a SQLite database file"""
     import sqlite3
-    conn = sqlite3.connect(file_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-    tables = [row[0] for row in cursor.fetchall()]
-
     schema = {"tables": []}
-    for table_name in tables:
-        cursor.execute(f'PRAGMA table_info("{table_name}")')
-        columns = [{"name": r[1], "type": r[2], "notNull": bool(r[3]), "primaryKey": bool(r[5])} for r in cursor.fetchall()]
+    try:
+        conn = sqlite3.connect(file_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        tables = [row[0] for row in cursor.fetchall()]
 
-        cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
-        row_count = cursor.fetchone()[0]
+        for table_name in tables:
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            columns = [{"name": r[1], "type": r[2], "notNull": bool(r[3]), "primaryKey": bool(r[5])} for r in cursor.fetchall()]
 
-        schema["tables"].append({
-            "name": table_name,
-            "columns": columns,
-            "rowCount": row_count
-        })
-    conn.close()
+            cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+            row_count = cursor.fetchone()[0]
+
+            schema["tables"].append({
+                "name": table_name,
+                "columns": columns,
+                "rowCount": row_count
+            })
+        conn.close()
+    except Exception as e:
+        logging.warning(f"Could not extract schema from {file_path}: {e}")
+        # If it's a CSV or other file, we might return an empty schema for now
+        # Future: Add CSV parsing logic here
     return schema
 
 
@@ -367,6 +413,58 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
         data.selectedTable,
         username=username
     )
+
+    # EXECUTE AND RETRIEVE DATA if SQL was generated
+    if result.get("type") == "sql" and result.get("query"):
+        sql = result["query"]
+        db_row = db_manager.get_system_row("SELECT file_path FROM databases WHERE id = ?", (data.databaseId,))
+        
+        if db_row:
+            try:
+                import sqlite3
+                conn = sqlite3.connect(db_row["file_path"])
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                query_upper = sql.strip().upper()
+                is_read = query_upper.startswith("SELECT") or query_upper.startswith("PRAGMA") or query_upper.startswith("WITH")
+                
+                if is_read:
+                    cursor.execute(sql)
+                    rows = cursor.fetchall()
+                    result["result"] = [dict(r) for r in rows]
+                    print(f"\n✅ DATA RETRIEVED: Found {len(result['result'])} records.")
+                else:
+                    cursor.execute(sql)
+                    changes = conn.total_changes
+                    conn.commit()
+                    result["changes"] = changes
+                    print(f"\n✅ DATABASE UPDATED: {changes} rows affected.")
+                    
+                    # Record commit
+                    op_type = "UPDATE"
+                    if query_upper.startswith("INSERT"): op_type = "INSERT"
+                    elif query_upper.startswith("DELETE"): op_type = "DELETE"
+                    
+                    db_manager.run_system_query(
+                        "INSERT INTO commits (database_id, user_id, query_executed, rows_affected, operation_type) VALUES (?, ?, ?, ?, ?)",
+                        (data.databaseId, current_user["userId"], sql, changes, op_type)
+                    )
+                    
+                    # Refresh schema if it's a structural change
+                    if any(x in query_upper for x in ["CREATE", "ALTER", "DROP", "RENAME"]):
+                        new_schema = _extract_schema(db_row["file_path"])
+                        db_manager.run_system_query(
+                            "INSERT INTO schema_cache (database_id, schema_json) VALUES (?, ?)",
+                            (data.databaseId, json.dumps(new_schema))
+                        )
+                
+                conn.close()
+            except Exception as e:
+                print(f"❌ EXECUTION FAILED: {e}")
+                result["error"] = str(e)
+                result["type"] = "error"
+
     return result
 
 @api_app.get("/api/query/suggestions/{database_id}")
@@ -434,7 +532,14 @@ async def execute_sql(data: SQLExecute, current_user: dict = Depends(get_current
             except Exception as commit_err:
                 logging.warning(f"Failed to record commit: {commit_err}")
 
-            return {"success": True, "result": {"rowsAffected": changes}, "queryType": "WRITE"}
+            # Determine success message
+            success_msg = f"{op_type.capitalize()} successful"
+            if changes > 0:
+                success_msg = f"{changes} row(s) affected. {op_type.capitalize()} successful."
+            else:
+                success_msg = f"{op_type.capitalize()} successful (No rows affected)."
+
+            return {"success": True, "result": {"rowsAffected": changes, "message": success_msg}, "queryType": "WRITE", "message": success_msg}
     except Exception as e:
         return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
 
@@ -518,12 +623,26 @@ async def query_executed(sid, data):
     await sio.emit('database-updated', data, room=f"db_{database_id}", skip_sid=sid)
 
 @sio.on('typing')
-async def typing(sid, database_id):
-    await sio.emit('user-typing', {'userId': 'some_id'}, room=f"db_{database_id}", skip_sid=sid)
+async def typing(sid, data):
+    # data is expected to be {'databaseId': ..., 'isTyping': ...}
+    database_id = data.get('databaseId')
+    is_typing = data.get('isTyping', True)
+    
+    # We should ideally have the user info from the session, 
+    # but for now we'll emit what the frontend expects
+    await sio.emit('typing', {
+        'username': 'Collaborator', # This should be dynamic in a real app
+        'isTyping': is_typing,
+        'databaseId': database_id
+    }, room=f"db_{database_id}", skip_sid=sid)
 
 @sio.on('stop-typing')
 async def stop_typing(sid, database_id):
-    await sio.emit('user-stop-typing', {'userId': 'some_id'}, room=f"db_{database_id}", skip_sid=sid)
+    await sio.emit('typing', {
+        'username': 'Collaborator',
+        'isTyping': False,
+        'databaseId': database_id
+    }, room=f"db_{database_id}", skip_sid=sid)
 
 if __name__ == "__main__":
     import uvicorn
