@@ -102,7 +102,7 @@ class PremiumNLPService:
                 current_key = self.api_keys[self.current_key_index]
                 self.client = genai.Client(api_key=current_key)
                 logger.info(f"Gemini initialized via API Key Pool - Index {self.current_key_index}")
-                print(f"✅ Active Identity: Gemini API Key #{self.current_key_index + 1}")
+                print(f"[OK] Active Identity: Gemini API Key #{self.current_key_index + 1}")
             elif self.credentials_path and os.path.exists(self.credentials_path):
                 # Fallback to Vertex AI only if no keys are provided
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(self.credentials_path)
@@ -112,13 +112,13 @@ class PremiumNLPService:
                     location=self.location
                 )
                 logger.info(f"Gemini initialized via Vertex AI (Secondary Fallback)")
-                print(f"✅ Connected to Google Cloud Vertex AI: {self.project_id}")
+                print(f"[OK] Connected to Google Cloud Vertex AI: {self.project_id}")
             else:
                 logger.warning("No Gemini authentication found (API Key Pool is empty)")
-                print("⚠️ No AI credentials found in poll. Falling back to local engine.")
+                print("[WARN] No AI credentials found in poll. Falling back to local engine.")
         except Exception as e:
             logger.warning(f"google-genai init failed: {e}")
-            print(f"❌ Gemini initialization failed: {e}")
+            print(f"[ERROR] Gemini initialization failed: {e}")
 
     async def process_query(
         self,
@@ -148,7 +148,7 @@ class PremiumNLPService:
 
         # Terminal Display
         # print("\n" + "="*50, flush=True)
-        # print("🚀 INTENT PROCESSING REPORT", flush=True)
+        # print("INTENT PROCESSING REPORT", flush=True)
         # print("="*50, flush=True)
         
         # Capture steps for terminal only
@@ -194,7 +194,7 @@ class PremiumNLPService:
             
         self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
         logger.info(f"Rotating to API Key #{self.current_key_index + 1}")
-        print(f"🔄 QUOTA EXHAUSTED: Rotating to Key #{self.current_key_index + 1}...")
+        print(f"[ROTATE] QUOTA EXHAUSTED: Rotating to Key #{self.current_key_index + 1}...")
         
         self._init_client()
         return True
@@ -214,7 +214,7 @@ class PremiumNLPService:
             import asyncio
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model="gemini-2.5-flash",  # Forced to Gemini 2.5 Flash as requested
+                model="gemini-2.5-flash",  # Using gemini-2.5-flash (correct model)
                 contents=prompt,
             )
             raw = response.text.strip()
@@ -252,12 +252,12 @@ class PremiumNLPService:
             
             logger.error(f"LLM call failed: {e}", exc_info=True)
             # print("-" * 50, flush=True)
-            print(f"❌ AI ERROR: {error_msg}", flush=True)
+            print(f"[ERROR] AI ERROR: {error_msg}", flush=True)
             # print("-" * 50, flush=True)
             
             if is_quota_error or "invalid" in error_msg.lower() or "not found" in error_msg.lower():
                 if retry_count < len(self.api_keys) - 1:
-                    print(f"🔄 FAILOVER: Key #{self.current_key_index + 1} failed. Escalating to next...")
+                    print(f"[FAILOVER] Key #{self.current_key_index + 1} failed. Escalating to next...")
                     if self._rotate_key():
                         # Retry with the new key
                         return await self._llm_process(
@@ -347,14 +347,17 @@ class PremiumNLPService:
         conversation_history: List,
         username: str
     ) -> str:
-        # Build schema string
+        # Build detailed schema string with column types
         tables_info = []
         for table in schema.get("tables", []):
-            cols = ", ".join(
-                f"{c['name']} ({c['type']})" for c in table.get("columns", [])
-            )
-            tables_info.append(f"  {table['name']}: [{cols}] ({table.get('rowCount', '?')} rows)")
-        schema_str = "\n".join(tables_info)
+            col_details = []
+            for c in table.get("columns", []):
+                pk_marker = " [PK]" if c.get("pk") else ""
+                nn_marker = " NOT NULL" if c.get("notnull") else ""
+                col_details.append(f"    {c['name']} {c['type']}{pk_marker}{nn_marker}")
+            cols_str = "\n".join(col_details)
+            tables_info.append(f"  TABLE: {table['name']} ({table.get('rowCount', '?')} rows)\n{cols_str}")
+        schema_str = "\n\n".join(tables_info)
 
         # Recent conversation for context
         recent = conversation_history[-6:] if conversation_history else []
@@ -363,13 +366,13 @@ class PremiumNLPService:
             conv_lines = []
             for msg in recent:
                 role = msg.get("role", "user")
-                content = msg.get("content", "")[:200]
+                content = msg.get("content", "")[:300]
                 conv_lines.append(f"  {role}: {content}")
             conv_str = "\n".join(conv_lines)
 
         context_str = self.context.get_summary(username)
 
-        return f"""You are a premium AI database assistant. You help users query SQLite databases using natural language.
+        return f"""You are an elite SQL expert and data analyst assistant. Your job is to generate PERFECTLY ACCURATE SQLite queries from natural language questions.
 
 DATABASE SCHEMA:
 {schema_str}
@@ -388,8 +391,8 @@ RESPOND WITH ONLY A JSON OBJECT. No text before or after the JSON.
 
 RESPONSE TYPES:
 
-1. For SQL queries (SELECT, UPDATE, INSERT, DELETE):
-{{"type": "sql", "query": "<valid SQLite SQL>", "queryType": "SELECT or WRITE", "explanation": "<brief explanation>", "target_table": "<table name>"}}
+1. For data queries (SELECT, UPDATE, INSERT, DELETE):
+{{"type": "sql", "query": "<valid SQLite SQL>", "queryType": "SELECT or WRITE", "explanation": "<detailed natural language explanation of what the query does and what the user should expect to see in results>", "target_table": "<main table name>"}}
 
 2. For informational/conceptual questions (what is AI, what is a primary key, general knowledge, greetings):
 {{"type": "info", "message": "<your helpful answer>"}}
@@ -397,20 +400,58 @@ RESPONSE TYPES:
 3. For ambiguous queries where you truly cannot determine what the user wants:
 {{"type": "clarification", "message": "<one specific clarifying question>"}}
 
-CRITICAL RULES:
-- For "names starting with S and ending with D": generate SELECT * FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE 'S%D'
-- For "update last name 'Jabili' to 'Pasunuri'": generate UPDATE EMPLOYEE SET LAST_NAME = 'Pasunuri' WHERE FIRST_NAME = 'Jabili' (or closest match on the name columns)
+====== CRITICAL SQL ACCURACY RULES ======
+
+NULL HANDLING (MOST IMPORTANT):
+- ALWAYS add "WHERE column IS NOT NULL" when doing MIN(), MAX(), AVG(), SUM(), ORDER BY, or comparisons on columns that might have NULLs.
+- For "longest tenure" / "earliest hire date": use WHERE HIRE_DATE IS NOT NULL ORDER BY HIRE_DATE ASC LIMIT 1
+- For "highest salary": use WHERE SALARY IS NOT NULL ORDER BY SALARY DESC LIMIT 1
+- NULL values must NEVER win in comparisons. A NULL hire_date does NOT mean longest tenure.
+- When counting or aggregating, exclude NULL values: COUNT(column) already skips NULLs, but WHERE filters are still needed for ORDER BY and comparisons.
+
+SELF-JOIN QUERIES (employee-manager comparisons):
+- "Employees who earn more than their manager":
+  SELECT e.FIRST_NAME, e.LAST_NAME, e.SALARY as emp_salary, m.FIRST_NAME as mgr_first, m.LAST_NAME as mgr_last, m.SALARY as mgr_salary FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.SALARY > m.SALARY AND e.SALARY IS NOT NULL AND m.SALARY IS NOT NULL
+- "Managers who earn less than a direct report":
+  SELECT DISTINCT m.FIRST_NAME, m.LAST_NAME, m.SALARY FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.SALARY > m.SALARY AND e.SALARY IS NOT NULL AND m.SALARY IS NOT NULL
+
+AGGREGATE ACCURACY:
+- For "department with highest total salary": use SUM(SALARY) with GROUP BY DEPARTMENT_ID, WHERE SALARY IS NOT NULL
+- For "highest paid in each department": use window functions or correlated subqueries:
+  SELECT * FROM EMPLOYEES e WHERE SALARY = (SELECT MAX(SALARY) FROM EMPLOYEES e2 WHERE e2.DEPARTMENT_ID = e.DEPARTMENT_ID AND e2.SALARY IS NOT NULL) AND SALARY IS NOT NULL
+- For "manager with most direct reports": COUNT the employees grouped by MANAGER_ID:
+  SELECT m.FIRST_NAME, m.LAST_NAME, COUNT(e.EMPLOYEE_ID) as direct_reports FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.MANAGER_ID IS NOT NULL GROUP BY e.MANAGER_ID ORDER BY direct_reports DESC LIMIT 1
+- For COUNT queries: use COUNT(column_name) not COUNT(*) when you need to exclude NULLs in that column.
+
+DATE COMPARISONS:
+- "Employees hired before their manager": self-join comparing hire dates:
+  SELECT e.FIRST_NAME, e.LAST_NAME, e.HIRE_DATE, m.FIRST_NAME, m.LAST_NAME, m.HIRE_DATE FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.HIRE_DATE < m.HIRE_DATE AND e.HIRE_DATE IS NOT NULL AND m.HIRE_DATE IS NOT NULL
+- Always filter out NULL dates in date comparisons.
+
+SALARY/AVERAGE COMPARISONS:
+- "Employees earning above company average":
+  SELECT * FROM EMPLOYEES WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEES WHERE SALARY IS NOT NULL) AND SALARY IS NOT NULL ORDER BY SALARY DESC
+- Always filter NULLs from both the subquery and the outer query.
+
+SAME VALUE ACROSS DEPARTMENTS:
+- "Employees with same salary as someone in another department":
+  SELECT DISTINCT e1.FIRST_NAME, e1.LAST_NAME, e1.SALARY, e1.DEPARTMENT_ID FROM EMPLOYEES e1 JOIN EMPLOYEES e2 ON e1.SALARY = e2.SALARY AND e1.DEPARTMENT_ID != e2.DEPARTMENT_ID WHERE e1.SALARY IS NOT NULL AND e1.DEPARTMENT_ID IS NOT NULL AND e2.DEPARTMENT_ID IS NOT NULL ORDER BY e1.SALARY DESC
+
+DATA INTEGRITY QUERIES:
+- "Records with NULL in column X": SELECT * FROM table WHERE column IS NULL
+- "Incomplete records": look for rows where key columns are NULL
+
+====== GENERAL RULES ======
+- Adapt table and column names to EXACTLY match the schema above. The table might be called EMPLOYEES, EMPLOYEE, employee, etc. - use the EXACT name from the schema.
 - If a table is active/selected and the user doesn't mention a specific table, USE the active table.
-- For UPDATE/INSERT/DELETE, set queryType to "WRITE".
-- For SELECT queries, set queryType to "SELECT".
-- NEVER ask "which table?" if there is an active table or the table is obvious.
-- For general knowledge questions like "what is AI?", "what is machine learning?", answer them directly with type "info".
-- For database concept questions like "what is a primary key?", answer with type "info".
-- For greetings like "hello", "hi", respond friendly with type "info".
-- Use ONLY columns that exist in the schema. Quote table names with double quotes if they contain special chars.
-- For SQLite: use UPPER() for case-insensitive comparisons, use LIKE for pattern matching.
-- Minimize clarification questions. Only ask when truly ambiguous.
-- Always generate valid SQLite syntax.
+- For UPDATE/INSERT/DELETE, set queryType to "WRITE". For SELECT, set queryType to "SELECT".
+- NEVER ask "which table?" if there is an active table or the table is obvious from context.
+- For general knowledge questions, greetings, database concepts: respond with type "info".
+- Use ONLY columns that exist in the schema. Double-quote table/column names with special chars.
+- For SQLite: use UPPER() for case-insensitive comparisons, LIKE for pattern matching.
+- Minimize clarification questions. Prefer making a reasonable assumption over asking.
+- Always generate valid SQLite syntax (no TOP, no ISNULL - use IS NULL, IFNULL, COALESCE).
+- The "explanation" field should be a helpful natural language summary: describe what the query finds, not just restate the SQL. If the result might be empty, explain why (e.g., "No employees earn more than their manager in this dataset, which means the management salary structure is well-maintained.").
 
 OUTPUT ONLY THE JSON OBJECT:"""
 

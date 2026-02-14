@@ -134,11 +134,11 @@ async def logout_user():
 async def upload_database(name: str = Form(...), file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     file_ext = os.path.splitext(file.filename)[1].lower()
     
-    # Check if it's a CSV or a SQLite file
-    if file_ext not in [".db", ".sqlite", ".sqlite3", ".csv"]:
-        raise HTTPException(status_code=400, detail="Unsupported file format. Please upload .db, .sqlite, .sqlite3 or .csv")
+    # Check if it's a supported file format
+    if file_ext not in [".db", ".sqlite", ".sqlite3", ".csv", ".xlsx", ".xls"]:
+        raise HTTPException(status_code=400, detail="Unsupported file format. Please upload .db, .sqlite, .sqlite3, .csv, .xlsx, or .xls")
 
-    unique_filename = f"{uuid.uuid4()}.db" # Save as .db even if it's a CSV
+    unique_filename = f"{uuid.uuid4()}.db" # Save as .db
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
     if file_ext == ".csv":
@@ -166,14 +166,52 @@ async def upload_database(name: str = Form(...), file: UploadFile = File(...), c
         cursor = conn.cursor()
         
         # Create table
-        cols = ", ".join([f"\"{h}\" TEXT" for h in sanitized_headers])
-        cursor.execute(f"CREATE TABLE \"{table_name}\" ({cols})")
+        cols = ", ".join([f'"{h}" TEXT' for h in sanitized_headers])
+        cursor.execute(f'CREATE TABLE "{table_name}" ({cols})')
         
         # Insert data
         placeholders = ", ".join(["?" for _ in sanitized_headers])
-        cursor.executemany(f"INSERT INTO \"{table_name}\" VALUES ({placeholders})", reader)
+        cursor.executemany(f'INSERT INTO "{table_name}" VALUES ({placeholders})', reader)
         
         conn.commit()
+        conn.close()
+    
+    elif file_ext in [".xlsx", ".xls"]:
+        import sqlite3
+        try:
+            import pandas as pd
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Excel support not available. Please install pandas and openpyxl.")
+        
+        # Save uploaded file temporarily
+        temp_path = os.path.join(UPLOAD_DIR, f"temp_{uuid.uuid4()}{file_ext}")
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        try:
+            # Read Excel file
+            excel_file = pd.ExcelFile(temp_path)
+            
+            # Create SQLite database
+            conn = sqlite3.connect(file_path)
+            
+            # Convert each sheet to a table
+            for sheet_name in excel_file.sheet_names:
+                df = pd.read_excel(temp_path, sheet_name=sheet_name)
+                
+                # Sanitize table name
+                table_name = sheet_name.strip().replace(" ", "_").replace("-", "_")
+                if not table_name: table_name = "data"
+                
+                # Write to SQLite
+                df.to_sql(table_name, conn, if_exists='replace', index=False)
+            
+            conn.close()
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    
     else:
         # Standard SQLite file upload
         with open(file_path, "wb") as buffer:
@@ -433,13 +471,13 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
                     cursor.execute(sql)
                     rows = cursor.fetchall()
                     result["result"] = [dict(r) for r in rows]
-                    print(f"\n✅ DATA RETRIEVED: Found {len(result['result'])} records.")
+                    print(f"\n[OK] DATA RETRIEVED: Found {len(result['result'])} records.")
                 else:
                     cursor.execute(sql)
                     changes = conn.total_changes
                     conn.commit()
                     result["changes"] = changes
-                    print(f"\n✅ DATABASE UPDATED: {changes} rows affected.")
+                    print(f"\n[OK] DATABASE UPDATED: {changes} rows affected.")
                     
                     # Record commit
                     op_type = "UPDATE"
@@ -461,7 +499,7 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
                 
                 conn.close()
             except Exception as e:
-                print(f"❌ EXECUTION FAILED: {e}")
+                print(f"[ERROR] EXECUTION FAILED: {e}")
                 result["error"] = str(e)
                 result["type"] = "error"
 

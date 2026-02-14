@@ -10,3 +10,5 @@ requests
 pydantic
 email-validator
 jinja2
+pandas
+openpyxl

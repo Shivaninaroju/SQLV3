@@ -748,5 +748,689 @@
     "nl": "hi",
     "sql": "N/A (Non-SQL response)",
     "tokens": null
+  },
+  {
+    "timestamp": "2026-02-13T19:07:49.715763",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 718,
+      "response_tokens": 23,
+      "total_tokens": 776
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:08:07.491341",
+    "nl": "employee names in the database",
+    "sql": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 722,
+      "response_tokens": 76,
+      "total_tokens": 866
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:08:29.136574",
+    "nl": "what is salary of employee \"Siri\"",
+    "sql": "SELECT SALARY FROM EMPLOYEE WHERE UPPER(FIRST_NAME) = UPPER('Siri')",
+    "tokens": {
+      "prompt_tokens": 750,
+      "response_tokens": 82,
+      "total_tokens": 965
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:09:10.989171",
+    "nl": "is there name siri in employee db?",
+    "sql": "SELECT COUNT(*) FROM EMPLOYEE WHERE UPPER(FIRST_NAME) = UPPER('Siri')",
+    "tokens": {
+      "prompt_tokens": 762,
+      "response_tokens": 83,
+      "total_tokens": 1280
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:10:14.705248",
+    "nl": "is there in the employee db ?",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 760,
+      "response_tokens": 24,
+      "total_tokens": 939
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:10:34.421773",
+    "nl": "is there employee name \"Siri\" in the database?",
+    "sql": "SELECT * FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE UPPER('Siri')",
+    "tokens": {
+      "prompt_tokens": 740,
+      "response_tokens": 88,
+      "total_tokens": 914
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:11:12.738017",
+    "nl": "salary of employee \"Swetha\"",
+    "sql": "SELECT SALARY FROM EMPLOYEE WHERE UPPER(FIRST_NAME) = UPPER('Swetha')",
+    "tokens": {
+      "prompt_tokens": 762,
+      "response_tokens": 85,
+      "total_tokens": 926
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:11:30.738363",
+    "nl": "is she there in employee database?",
+    "sql": "SELECT COUNT(*) FROM EMPLOYEE WHERE UPPER(FIRST_NAME) = UPPER('Swetha')",
+    "tokens": {
+      "prompt_tokens": 758,
+      "response_tokens": 66,
+      "total_tokens": 1013
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:11:48.783369",
+    "nl": "reply with yes or no",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 757,
+      "response_tokens": 52,
+      "total_tokens": 2087
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:22:54.303424",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 728,
+      "response_tokens": 36,
+      "total_tokens": 803
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:23:12.727313",
+    "nl": "what are tables involved in the db?",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 730,
+      "response_tokens": 36,
+      "total_tokens": 803
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:23:26.550442",
+    "nl": "tell me 50 lines about Database",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 738,
+      "response_tokens": 769,
+      "total_tokens": 1561
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:25:42.743652",
+    "nl": "remove employee name siri from employee table",
+    "sql": "DELETE FROM EMPLOYEE WHERE FIRST_NAME = 'Siri'",
+    "tokens": {
+      "prompt_tokens": 725,
+      "response_tokens": 76,
+      "total_tokens": 1031
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:25:53.347412",
+    "nl": "show employees",
+    "sql": "SELECT * FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 749,
+      "response_tokens": 64,
+      "total_tokens": 927
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:26:24.168946",
+    "nl": "remove employee name SIRI from employee table",
+    "sql": "DELETE FROM EMPLOYEE WHERE FIRST_NAME = 'SIRI'",
+    "tokens": {
+      "prompt_tokens": 741,
+      "response_tokens": 79,
+      "total_tokens": 1041
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:26:37.209408",
+    "nl": "show employee names",
+    "sql": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 750,
+      "response_tokens": 76,
+      "total_tokens": 877
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:36:57.539881",
+    "nl": "Count total records",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 720,
+      "response_tokens": 22,
+      "total_tokens": 817
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:37:13.598932",
+    "nl": "hospital",
+    "sql": "SELECT COUNT(*) FROM HOSPITAL",
+    "tokens": {
+      "prompt_tokens": 741,
+      "response_tokens": 66,
+      "total_tokens": 900
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:37:39.390148",
+    "nl": "is there any employee name with \"Shreshta\"",
+    "sql": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE '%SHRESHTA%' OR UPPER(LAST_NAME) LIKE '%SHRESHTA%'",
+    "tokens": {
+      "prompt_tokens": 791,
+      "response_tokens": 108,
+      "total_tokens": 1175
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:38:18.809248",
+    "nl": "check the employee table and tell me if she is there in that or not",
+    "sql": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE '%SHRESHTA%' OR UPPER(LAST_NAME) LIKE '%SHRESHTA%'",
+    "tokens": {
+      "prompt_tokens": 918,
+      "response_tokens": 107,
+      "total_tokens": 1214
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:38:50.032063",
+    "nl": "salary of employee \"Suttu\"",
+    "sql": "SELECT SALARY FROM EMPLOYEE WHERE UPPER(FIRST_NAME) LIKE '%SUTTU%' OR UPPER(LAST_NAME) LIKE '%SUTTU%'",
+    "tokens": {
+      "prompt_tokens": 975,
+      "response_tokens": 99,
+      "total_tokens": 1164
+    }
+  },
+  {
+    "timestamp": "2026-02-13T19:39:21.066699",
+    "nl": "insert employee name \"Jeera\"",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-13T19:41:13.553568",
+    "nl": "insert employee name \"Jeera\"",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-13T19:41:33.433318",
+    "nl": "insert employee name \"Jeera\"",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-13T19:44:02.491908",
+    "nl": "hi swetha",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-13T20:00:23.149394",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-13T20:26:34.170010",
+    "nl": "hey",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-13T21:41:41.005975",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T10:35:37.010643",
+    "nl": "hello",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T10:44:44.942733",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T10:53:51.428088",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T10:54:01.638311",
+    "nl": "Count total records",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T11:02:29.762649",
+    "nl": "Show all employees",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T11:06:19.137600",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 751,
+      "response_tokens": 35,
+      "total_tokens": 822
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:06:44.725968",
+    "nl": "insert employee name \"Sana\"",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 778,
+      "response_tokens": 48,
+      "total_tokens": 1114
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:06:52.103247",
+    "nl": "no",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 830,
+      "response_tokens": 38,
+      "total_tokens": 983
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:07:01.548873",
+    "nl": "have you inserted?",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 814,
+      "response_tokens": 44,
+      "total_tokens": 979
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:07:15.909312",
+    "nl": "keep them null",
+    "sql": "INSERT INTO EMPLOYEE (FIRST_NAME) VALUES ('Sana')",
+    "tokens": {
+      "prompt_tokens": 840,
+      "response_tokens": 86,
+      "total_tokens": 2091
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:07:31.149796",
+    "nl": "show employee table",
+    "sql": "SELECT * FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 866,
+      "response_tokens": 66,
+      "total_tokens": 979
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:15:19.011956",
+    "nl": "List employees whose salary is higher than their direct manager\u2019s salary.",
+    "sql": "SELECT E.FIRST_NAME, E.LAST_NAME, E.SALARY, M.FIRST_NAME AS MANAGER_FIRST_NAME, M.LAST_NAME AS MANAGER_LAST_NAME, M.SALARY AS MANAGER_SALARY FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.SALARY > M.SALARY",
+    "tokens": {
+      "prompt_tokens": 743,
+      "response_tokens": 175,
+      "total_tokens": 1047
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:20:44.429615",
+    "nl": "Employees Who Earn More Than Their Manager",
+    "sql": "SELECT E.FIRST_NAME, E.LAST_NAME, E.SALARY, M.FIRST_NAME AS MANAGER_FIRST_NAME, M.LAST_NAME AS MANAGER_LAST_NAME, M.SALARY AS MANAGER_SALARY FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.SALARY > M.SALARY",
+    "tokens": {
+      "prompt_tokens": 827,
+      "response_tokens": 169,
+      "total_tokens": 1322
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:21:20.320451",
+    "nl": "Managers Who Earn Less Than One of Their Direct Reports",
+    "sql": "SELECT M.FIRST_NAME, M.LAST_NAME, M.SALARY, E.FIRST_NAME AS REPORT_FIRST_NAME, E.LAST_NAME AS REPORT_LAST_NAME, E.SALARY AS REPORT_SALARY FROM EMPLOYEE AS M JOIN EMPLOYEE AS E ON M.EMPLOYEE_ID = E.MANAGER_ID WHERE M.SALARY < E.SALARY",
+    "tokens": {
+      "prompt_tokens": 908,
+      "response_tokens": 206,
+      "total_tokens": 1714
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:21:48.983521",
+    "nl": "Highest Paid Employee in Each Department",
+    "sql": "SELECT E.FIRST_NAME, E.LAST_NAME, E.SALARY, E.DEPARTMENT_ID FROM EMPLOYEE AS E JOIN (SELECT DEPARTMENT_ID, MAX(SALARY) AS MAX_SALARY FROM EMPLOYEE GROUP BY DEPARTMENT_ID) AS MaxSalaries ON E.DEPARTMENT_ID = MaxSalaries.DEPARTMENT_ID AND E.SALARY = MaxSalaries.MAX_SALARY",
+    "tokens": {
+      "prompt_tokens": 997,
+      "response_tokens": 176,
+      "total_tokens": 1748
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:22:10.503797",
+    "nl": "Department With Highest Total Salary Expense",
+    "sql": "SELECT DEPARTMENT_ID, SUM(SALARY) AS Total_Salary_Expense FROM EMPLOYEE GROUP BY DEPARTMENT_ID ORDER BY Total_Salary_Expense DESC LIMIT 1",
+    "tokens": {
+      "prompt_tokens": 1074,
+      "response_tokens": 114,
+      "total_tokens": 1409
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:22:54.843607",
+    "nl": "Employee With Longest Tenure",
+    "sql": "SELECT FIRST_NAME, LAST_NAME, HIRE_DATE FROM EMPLOYEE ORDER BY HIRE_DATE ASC LIMIT 1",
+    "tokens": {
+      "prompt_tokens": 992,
+      "response_tokens": 101,
+      "total_tokens": 1226
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:23:19.669677",
+    "nl": "Employees Hired Before Their Manager",
+    "sql": "SELECT E.FIRST_NAME AS EmployeeFirstName, E.LAST_NAME AS EmployeeLastName, E.HIRE_DATE AS EmployeeHireDate, M.FIRST_NAME AS ManagerFirstName, M.LAST_NAME AS ManagerLastName, M.HIRE_DATE AS ManagerHireDate FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.HIRE_DATE < M.HIRE_DATE",
+    "tokens": {
+      "prompt_tokens": 938,
+      "response_tokens": 170,
+      "total_tokens": 1364
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:23:39.693201",
+    "nl": "Employees Earning Above Company Average",
+    "sql": "SELECT FIRST_NAME, LAST_NAME, SALARY FROM EMPLOYEE WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEE)",
+    "tokens": {
+      "prompt_tokens": 1001,
+      "response_tokens": 105,
+      "total_tokens": 1253
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:24:00.569557",
+    "nl": "Manager With Most Direct Reports",
+    "sql": "SELECT M.FIRST_NAME, M.LAST_NAME, COUNT(E.EMPLOYEE_ID) AS NumberOfDirectReports FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID GROUP BY M.EMPLOYEE_ID, M.FIRST_NAME, M.LAST_NAME ORDER BY NumberOfDirectReports DESC LIMIT 1",
+    "tokens": {
+      "prompt_tokens": 928,
+      "response_tokens": 156,
+      "total_tokens": 1620
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:24:17.635952",
+    "nl": "Employees With Same Salary as Someone in Another Department",
+    "sql": "SELECT DISTINCT e1.FIRST_NAME, e1.LAST_NAME, e1.SALARY, e1.DEPARTMENT_ID FROM EMPLOYEE AS e1 JOIN EMPLOYEE AS e2 ON e1.SALARY = e2.SALARY AND e1.DEPARTMENT_ID != e2.DEPARTMENT_ID",
+    "tokens": {
+      "prompt_tokens": 1021,
+      "response_tokens": 131,
+      "total_tokens": 1532
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:24:41.919404",
+    "nl": "Records with NULL EMPLOYEE_ID:",
+    "sql": "SELECT * FROM EMPLOYEE WHERE EMPLOYEE_ID IS NULL",
+    "tokens": {
+      "prompt_tokens": 1026,
+      "response_tokens": 79,
+      "total_tokens": 1256
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:39:28.560414",
+    "nl": "Manager With Most Direct Reports",
+    "sql": "SELECT M.FIRST_NAME, M.LAST_NAME, COUNT(E.EMPLOYEE_ID) AS NumberOfDirectReports FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.MANAGER_ID IS NOT NULL GROUP BY M.EMPLOYEE_ID, M.FIRST_NAME, M.LAST_NAME ORDER BY NumberOfDirectReports DESC LIMIT 1",
+    "tokens": {
+      "prompt_tokens": 1945,
+      "response_tokens": 234,
+      "total_tokens": 2718
+    }
+  },
+  {
+    "timestamp": "2026-02-14T11:39:53.924976",
+    "nl": "Managers Who Earn Less Than One of Their Direct Reports",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T12:09:19.655762",
+    "nl": "Managers Who Earn Less Than One of Their Direct Reports",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": null
+  },
+  {
+    "timestamp": "2026-02-14T14:42:46.150373",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1719,
+      "response_tokens": 62,
+      "total_tokens": 1811
+    }
+  },
+  {
+    "timestamp": "2026-02-14T14:43:03.545462",
+    "nl": "hello",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1729,
+      "response_tokens": 35,
+      "total_tokens": 1790
+    }
+  },
+  {
+    "timestamp": "2026-02-14T14:51:40.669280",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1723,
+      "response_tokens": 61,
+      "total_tokens": 1816
+    }
+  },
+  {
+    "timestamp": "2026-02-14T14:54:49.673914",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1728,
+      "response_tokens": 32,
+      "total_tokens": 1797
+    }
+  },
+  {
+    "timestamp": "2026-02-14T14:58:51.526779",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1733,
+      "response_tokens": 35,
+      "total_tokens": 1797
+    }
+  },
+  {
+    "timestamp": "2026-02-14T15:01:27.797588",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1738,
+      "response_tokens": 32,
+      "total_tokens": 1797
+    }
+  },
+  {
+    "timestamp": "2026-02-14T15:02:01.231450",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1723,
+      "response_tokens": 35,
+      "total_tokens": 1784
+    }
+  },
+  {
+    "timestamp": "2026-02-14T17:18:32.118354",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1723,
+      "response_tokens": 48,
+      "total_tokens": 1804
+    }
+  },
+  {
+    "timestamp": "2026-02-14T17:23:24.839195",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1723,
+      "response_tokens": 47,
+      "total_tokens": 1806
+    }
+  },
+  {
+    "timestamp": "2026-02-14T17:23:46.428020",
+    "nl": "how many employees are there?",
+    "sql": "SELECT COUNT(EMPLOYEE_ID) FROM EMPLOYEE;",
+    "tokens": {
+      "prompt_tokens": 1761,
+      "response_tokens": 88,
+      "total_tokens": 2038
+    }
+  },
+  {
+    "timestamp": "2026-02-14T17:24:29.435089",
+    "nl": "number of employee names in the employee table",
+    "sql": "SELECT COUNT(DISTINCT FIRST_NAME || ' ' || LAST_NAME) FROM EMPLOYEE;",
+    "tokens": {
+      "prompt_tokens": 1833,
+      "response_tokens": 141,
+      "total_tokens": 3628
+    }
+  },
+  {
+    "timestamp": "2026-02-14T17:53:32.298281",
+    "nl": "hi",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1755,
+      "response_tokens": 27,
+      "total_tokens": 1811
+    }
+  },
+  {
+    "timestamp": "2026-02-14T18:36:15.232776",
+    "nl": "Show me all data from EMPLOYEE",
+    "sql": "SELECT * FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 1725,
+      "response_tokens": 80,
+      "total_tokens": 1926
+    }
+  },
+  {
+    "timestamp": "2026-02-14T18:36:49.380937",
+    "nl": "Show me all data from EMPLOYEE",
+    "sql": "SELECT * FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 1746,
+      "response_tokens": 81,
+      "total_tokens": 1974
+    }
+  },
+  {
+    "timestamp": "2026-02-14T18:47:57.679939",
+    "nl": "How many rows are in EMPLOYEE?",
+    "sql": "SELECT COUNT(*) FROM EMPLOYEE;",
+    "tokens": {
+      "prompt_tokens": 1746,
+      "response_tokens": 80,
+      "total_tokens": 1897
+    }
+  },
+  {
+    "timestamp": "2026-02-14T18:52:52.880242",
+    "nl": "Show me all data from EMPLOYEE",
+    "sql": "SELECT * FROM EMPLOYEE;",
+    "tokens": {
+      "prompt_tokens": 1753,
+      "response_tokens": 83,
+      "total_tokens": 1918
+    }
+  },
+  {
+    "timestamp": "2026-02-14T18:56:36.375458",
+    "nl": "How many rows are in EMPLOYEE?",
+    "sql": "SELECT COUNT(*) FROM EMPLOYEE;",
+    "tokens": {
+      "prompt_tokens": 1747,
+      "response_tokens": 83,
+      "total_tokens": 1912
+    }
+  },
+  {
+    "timestamp": "2026-02-14T18:59:05.972033",
+    "nl": "h",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1787,
+      "response_tokens": 36,
+      "total_tokens": 1939
+    }
+  },
+  {
+    "timestamp": "2026-02-14T18:59:11.977701",
+    "nl": "hello",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1790,
+      "response_tokens": 39,
+      "total_tokens": 1855
+    }
+  },
+  {
+    "timestamp": "2026-02-14T19:25:46.964174",
+    "nl": "Show me all data from EMPLOYEE",
+    "sql": "SELECT * FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 1735,
+      "response_tokens": 83,
+      "total_tokens": 1858
+    }
+  },
+  {
+    "timestamp": "2026-02-14T19:26:12.583134",
+    "nl": "hello",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1788,
+      "response_tokens": 46,
+      "total_tokens": 1878
+    }
   }
 ]
