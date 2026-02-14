@@ -1432,5 +1432,85 @@
       "response_tokens": 46,
       "total_tokens": 1878
     }
+  },
+  {
+    "timestamp": "2026-02-14T21:40:22.994778",
+    "nl": "Show me all data from EMPLOYEE",
+    "sql": "SELECT * FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 1729,
+      "response_tokens": 81,
+      "total_tokens": 1927
+    }
+  },
+  {
+    "timestamp": "2026-02-14T21:40:36.886699",
+    "nl": "Hello",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1786,
+      "response_tokens": 38,
+      "total_tokens": 1867
+    }
+  },
+  {
+    "timestamp": "2026-02-14T21:40:53.051561",
+    "nl": "i want to know about Shiva Prasad Naroju",
+    "sql": "SELECT * FROM EMPLOYEE WHERE FIRST_NAME = 'Shiva Prasad' AND LAST_NAME = 'Naroju'",
+    "tokens": {
+      "prompt_tokens": 1804,
+      "response_tokens": 124,
+      "total_tokens": 2842
+    }
+  },
+  {
+    "timestamp": "2026-02-14T21:40:57.546302",
+    "nl": "asdfsa",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1891,
+      "response_tokens": 38,
+      "total_tokens": 1988
+    }
+  },
+  {
+    "timestamp": "2026-02-14T21:41:05.028625",
+    "nl": "asfd",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1857,
+      "response_tokens": 38,
+      "total_tokens": 2036
+    }
+  },
+  {
+    "timestamp": "2026-02-14T21:41:14.298528",
+    "nl": "adf",
+    "sql": "N/A (Non-SQL response)",
+    "tokens": {
+      "prompt_tokens": 1858,
+      "response_tokens": 38,
+      "total_tokens": 1983
+    }
+  },
+  {
+    "timestamp": "2026-02-14T22:31:57.374657",
+    "nl": "What are the column names in EMPLOYEE?",
+    "sql": "PRAGMA table_info(EMPLOYEE);",
+    "tokens": {
+      "prompt_tokens": 1737,
+      "response_tokens": 114,
+      "total_tokens": 2254
+    }
+  },
+  {
+    "timestamp": "2026-02-14T22:37:12.999286",
+    "nl": "What are the column names in EMPLOYEE?",
+    "sql": "PRAGMA table_info(EMPLOYEE);",
+    "tokens": {
+      "prompt_tokens": 1758,
+      "response_tokens": 108,
+      "total_tokens": 1937
+    }
   }
 ]
