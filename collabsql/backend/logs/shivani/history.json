@@ -1512,5 +1512,25 @@
       "response_tokens": 108,
       "total_tokens": 1937
     }
+  },
+  {
+    "timestamp": "2026-02-16T11:22:35.708030",
+    "nl": "Show me all data from EMPLOYEE",
+    "sql": "SELECT * FROM EMPLOYEE",
+    "tokens": {
+      "prompt_tokens": 1729,
+      "response_tokens": 80,
+      "total_tokens": 1942
+    }
+  },
+  {
+    "timestamp": "2026-02-16T11:26:00.125038",
+    "nl": "Show me all data from HOSPITAL",
+    "sql": "SELECT * FROM HOSPITAL",
+    "tokens": {
+      "prompt_tokens": 1790,
+      "response_tokens": 79,
+      "total_tokens": 1962
+    }
   }
 ]

@@ -1,5 +1,5 @@
 """
-Premium AI Database Assistant - Gemini 2.5 Flash
+Premium AI Database Assistant - Gemini 2.0 Flash
 Single-pass LLM architecture: user query -> LLM generates complete response
 """
 
@@ -206,15 +206,21 @@ class PremiumNLPService:
         active_table: Optional[str],
         conversation_history: List,
         username: str,
-        retry_count: int = 0
+        retry_count: int = 0,
+        model_name: str = "gemini-1.5-flash"
     ) -> Dict:
         prompt = self._build_prompt(user_query, schema, active_table, conversation_history, username)
 
+        import time
+        start_time = time.time()
         try:
-            import asyncio
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model="gemini-2.5-flash",  # Using gemini-2.5-flash (correct model)
+            # Native Asynchronous Client
+            target_model = model_name
+            if target_model == "gemini-1.5-flash":
+                target_model = "gemini-1.5-flash-latest" 
+            
+            response = await self.client.aio.models.generate_content(
+                model=target_model, 
                 contents=prompt,
             )
             raw = response.text.strip()
@@ -229,14 +235,14 @@ class PremiumNLPService:
             # Parse JSON from response
             result = self._parse_llm_response(raw)
 
-            # Add extra metadata
+            latency = round(time.time() - start_time, 2)
+            # Metadata
             result["usage"] = usage
+            result["latency"] = latency
             result["steps"] = [
-                f"Identity Verified: Using API Key #{self.current_key_index + 1}...",
-                "Activating Gemini 2.5 Flash Neural Engine...",
-                "Analyzing natural language intent...",
-                "Cross-referencing query with database schema...",
-                "Optimizing extracted SQL for SQLite engine..."
+                f"Identity: API Key #{self.current_key_index + 1}",
+                f"Engine: {target_model.replace('gemini-', 'Gemini ').replace('-', ' ').title()} (Optimized Lite)",
+                f"Latency: {latency}s"
             ]
 
             # Update context
@@ -248,33 +254,35 @@ class PremiumNLPService:
 
         except Exception as e:
             error_msg = str(e)
-            is_quota_error = "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg
+            latency = round(time.time() - start_time, 2)
             
-            logger.error(f"LLM call failed: {e}", exc_info=True)
-            # print("-" * 50, flush=True)
-            print(f"[ERROR] AI ERROR: {error_msg}", flush=True)
-            # print("-" * 50, flush=True)
-            
-            if is_quota_error or "invalid" in error_msg.lower() or "not found" in error_msg.lower():
-                if retry_count < len(self.api_keys) - 1:
-                    print(f"[FAILOVER] Key #{self.current_key_index + 1} failed. Escalating to next...")
+            # Classification
+            is_rotatable = any(err in error_msg for err in ["429", "RESOURCE_EXHAUSTED", "503", "500", "Deadline Exceeded"])
+            # Some 400 errors are actually quota related in disguised form, but 404 is usually model naming
+            is_model_error = any(err in error_msg for err in ["404", "model not found", "not found for API version"])
+
+            logger.error(f"LLM [{model_name}] failed after {latency}s: {e}")
+
+            # If 1.5 fails, rotate key or try 8B
+            if model_name.startswith("gemini-1.5"):
+                if is_rotatable and retry_count < len(self.api_keys) - 1:
+                    print(f"[ROTATE] Key #{self.current_key_index + 1} exhausted. Rotating...")
                     if self._rotate_key():
-                        # Retry with the new key
                         return await self._llm_process(
                             user_query, schema, active_table, conversation_history, username, 
-                            retry_count=retry_count + 1
+                            retry_count=retry_count + 1, model_name=model_name
                         )
-                
-                return {
-                    "type": "error",
-                    "message": "AI Quota Exceeded across all available API keys. Please try again tomorrow or add more keys to api_keys.json.",
-                    "steps": ["Analyzing request limits...", "Quota exhaustion detected.", "All pools exhausted."]
-                }
-            
+                elif model_name != "gemini-1.5-flash-8b":
+                    print(f"[FALLBACK] Switching to ultra-lite gemini-1.5-flash-8b...")
+                    return await self._llm_process(
+                        user_query, schema, active_table, conversation_history, username, 
+                        retry_count=0, model_name="gemini-1.5-flash-8b"
+                    )
+
             return {
                 "type": "error",
-                "message": f"AI Engine Error: {error_msg}. (Model: {os.getenv('GEMINI_MODEL', 'gemini-1.5-flash-latest')})",
-                "steps": ["Analyzing connection...", "Error detected.", "Synthesis aborted."]
+                "message": f"AI Engine Exhausted (Latency: {latency}s). All keys and models are reaching limits.",
+                "error_details": error_msg
             }
 
     def _log_query(self, username: str, nl_query: str, sql_query: Optional[str], usage: Optional[Dict] = None):
@@ -285,13 +293,6 @@ class PremiumNLPService:
             
             log_file = os.path.join(log_dir, "history.json")
             
-            entry = {
-                "timestamp": datetime.now().isoformat(),
-                "nl": nl_query,
-                "sql": sql_query or "N/A (Non-SQL response)",
-                "tokens": usage
-            }
-            
             history = []
             if os.path.exists(log_file):
                 try:
@@ -299,13 +300,44 @@ class PremiumNLPService:
                         history = json.load(f)
                 except:
                     history = []
+
+            # Calculate cumulative tokens and key info
+            total_used = sum(item.get("usage", {}).get("total_used_till_now", 0) for item in history if isinstance(item.get("usage"), dict))
+            # If the old format exists, fallback to reading 'tokens'
+            if total_used == 0:
+                total_used = sum(item.get("tokens", {}).get("total_tokens", 0) for item in history if isinstance(item.get("tokens"), dict))
+            
+            current_tokens = usage.get("total_tokens", 0) if usage else 0
+            new_total = total_used + current_tokens
+            
+            # Estimate remaining (using 1,000,000 as a soft daily/pool limit)
+            soft_limit = 1000000 
+            remaining = max(0, soft_limit - new_total)
+            
+            api_key_info = "N/A"
+            if self.api_keys:
+                key = self.api_keys[self.current_key_index]
+                api_key_info = f"Key #{self.current_key_index + 1} ({key[:6]}...{key[-4:]})"
+
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "nl": nl_query,
+                "sql": sql_query or "N/A (Non-SQL response)",
+                "api_key": api_key_info,
+                "usage": {
+                    "current_query": usage,
+                    "latency_seconds": result.get("latency", 0),
+                    "total_used_till_now": new_total,
+                    "estimated_remaining": remaining
+                }
+            }
             
             history.append(entry)
             
             with open(log_file, "w") as f:
                 json.dump(history, f, indent=2)
                 
-            logger.info(f"Logged query for user {username}")
+            logger.info(f"Logged query for user {username} (Total used: {new_total})")
         except Exception as e:
             logger.error(f"Failed to log query: {e}")
 
@@ -372,88 +404,53 @@ class PremiumNLPService:
 
         context_str = self.context.get_summary(username)
 
-        return f"""You are an elite SQL expert and data analyst assistant. Your job is to generate PERFECTLY ACCURATE SQLite queries from natural language questions.
+        return f"""ROLE: You are the Senior AI Database Architect. Your mission is to provide INDUSTRY-GRADE SQLite responses with absolute precision.
+            
+OBJECTIVE: Convert natural language into optimized, secure, and accurate SQLite queries. You are running on a Lite engine, so you MUST compensate by using advanced logical reasoning and strict adherence to SQL standards.
 
 DATABASE SCHEMA:
 {schema_str}
 
-ACTIVE TABLE: {active_table or "None selected"}
+CONVERSATION STATE:
+- Active Table Context: {active_table or "Global/Implicit"}
+- Analytical Context: {context_str}
+- History: {conv_str}
 
-CONTEXT:
-{context_str}
+--- ARCHITECTURAL CONSTRAINTS ---
+1. SCHEMA TRUTH: Use ONLY columns and tables defined above. Case sensitivity matters for double-quoted identifiers.
+2. LOGICAL PIPELINE:
+   - Identify the primary intent (Read, Write, Info).
+   - Resolve ambiguous references using history/active table.
+   - For SQL: Build the WHERE filters first, then Aggregates, then Sort/Limit.
+3. SQLITE PRECISION: Use SQLite logic (|| for concat, strftime for dates, LIMIT for top).
+4. ERROR PREVENTION: If a query might fail due to missing data or schema mismatch, provide a clarifying response instead.
 
-RECENT CONVERSATION:
-{conv_str}
+--- CRITICAL REASONING & ACCURACY RULES ---
+- NULL RESILIENCE: Apply `WHERE x IS NOT NULL` for all MIN/MAX/SUM/AVG and ORDER BY. This is non-negotiable for accuracy.
+- JOIN INTEGRITY: Use explicit aliases (e.g., `FROM Table t JOIN Table m ON t.ID = m.ID`) for self-joins.
+- DATA SECURITY: Only perform the specific operation requested. Do not drop tables unless explicitly asked by 'Admin'.
+- CASE INSENSITIVITY: Wrap column comparisons in `UPPER()` or `LOWER()` for standard text fields.
 
-USER QUERY: "{user_query}"
+--- RESPONSE SPECIFICATION ---
+Return ONLY a valid JSON object.
 
-RESPOND WITH ONLY A JSON OBJECT. No text before or after the JSON.
+A. FOR DATA OPERATIONS (SELECT/INSERT/UPDATE/DELETE):
+{{
+  "type": "sql",
+  "query": "<optimized_sql_string>",
+  "queryType": "SELECT" | "WRITE",
+  "explanation": "<pro_tier_explanation>",
+  "target_table": "<table_name>"
+}}
 
-RESPONSE TYPES:
+B. FOR KNOWLEDGE/GREETINGS/CLARIFICATION:
+{{
+  "type": "info" | "clarification",
+  "message": "<helpful_expert_response>"
+}}
 
-1. For data queries (SELECT, UPDATE, INSERT, DELETE):
-{{"type": "sql", "query": "<valid SQLite SQL>", "queryType": "SELECT or WRITE", "explanation": "<detailed natural language explanation of what the query does and what the user should expect to see in results>", "target_table": "<main table name>"}}
-
-2. For informational/conceptual questions (what is AI, what is a primary key, general knowledge, greetings):
-{{"type": "info", "message": "<your helpful answer>"}}
-
-3. For ambiguous queries where you truly cannot determine what the user wants:
-{{"type": "clarification", "message": "<one specific clarifying question>"}}
-
-====== CRITICAL SQL ACCURACY RULES ======
-
-NULL HANDLING (MOST IMPORTANT):
-- ALWAYS add "WHERE column IS NOT NULL" when doing MIN(), MAX(), AVG(), SUM(), ORDER BY, or comparisons on columns that might have NULLs.
-- For "longest tenure" / "earliest hire date": use WHERE HIRE_DATE IS NOT NULL ORDER BY HIRE_DATE ASC LIMIT 1
-- For "highest salary": use WHERE SALARY IS NOT NULL ORDER BY SALARY DESC LIMIT 1
-- NULL values must NEVER win in comparisons. A NULL hire_date does NOT mean longest tenure.
-- When counting or aggregating, exclude NULL values: COUNT(column) already skips NULLs, but WHERE filters are still needed for ORDER BY and comparisons.
-
-SELF-JOIN QUERIES (employee-manager comparisons):
-- "Employees who earn more than their manager":
-  SELECT e.FIRST_NAME, e.LAST_NAME, e.SALARY as emp_salary, m.FIRST_NAME as mgr_first, m.LAST_NAME as mgr_last, m.SALARY as mgr_salary FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.SALARY > m.SALARY AND e.SALARY IS NOT NULL AND m.SALARY IS NOT NULL
-- "Managers who earn less than a direct report":
-  SELECT DISTINCT m.FIRST_NAME, m.LAST_NAME, m.SALARY FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.SALARY > m.SALARY AND e.SALARY IS NOT NULL AND m.SALARY IS NOT NULL
-
-AGGREGATE ACCURACY:
-- For "department with highest total salary": use SUM(SALARY) with GROUP BY DEPARTMENT_ID, WHERE SALARY IS NOT NULL
-- For "highest paid in each department": use window functions or correlated subqueries:
-  SELECT * FROM EMPLOYEES e WHERE SALARY = (SELECT MAX(SALARY) FROM EMPLOYEES e2 WHERE e2.DEPARTMENT_ID = e.DEPARTMENT_ID AND e2.SALARY IS NOT NULL) AND SALARY IS NOT NULL
-- For "manager with most direct reports": COUNT the employees grouped by MANAGER_ID:
-  SELECT m.FIRST_NAME, m.LAST_NAME, COUNT(e.EMPLOYEE_ID) as direct_reports FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.MANAGER_ID IS NOT NULL GROUP BY e.MANAGER_ID ORDER BY direct_reports DESC LIMIT 1
-- For COUNT queries: use COUNT(column_name) not COUNT(*) when you need to exclude NULLs in that column.
-
-DATE COMPARISONS:
-- "Employees hired before their manager": self-join comparing hire dates:
-  SELECT e.FIRST_NAME, e.LAST_NAME, e.HIRE_DATE, m.FIRST_NAME, m.LAST_NAME, m.HIRE_DATE FROM EMPLOYEES e JOIN EMPLOYEES m ON e.MANAGER_ID = m.EMPLOYEE_ID WHERE e.HIRE_DATE < m.HIRE_DATE AND e.HIRE_DATE IS NOT NULL AND m.HIRE_DATE IS NOT NULL
-- Always filter out NULL dates in date comparisons.
-
-SALARY/AVERAGE COMPARISONS:
-- "Employees earning above company average":
-  SELECT * FROM EMPLOYEES WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEES WHERE SALARY IS NOT NULL) AND SALARY IS NOT NULL ORDER BY SALARY DESC
-- Always filter NULLs from both the subquery and the outer query.
-
-SAME VALUE ACROSS DEPARTMENTS:
-- "Employees with same salary as someone in another department":
-  SELECT DISTINCT e1.FIRST_NAME, e1.LAST_NAME, e1.SALARY, e1.DEPARTMENT_ID FROM EMPLOYEES e1 JOIN EMPLOYEES e2 ON e1.SALARY = e2.SALARY AND e1.DEPARTMENT_ID != e2.DEPARTMENT_ID WHERE e1.SALARY IS NOT NULL AND e1.DEPARTMENT_ID IS NOT NULL AND e2.DEPARTMENT_ID IS NOT NULL ORDER BY e1.SALARY DESC
-
-DATA INTEGRITY QUERIES:
-- "Records with NULL in column X": SELECT * FROM table WHERE column IS NULL
-- "Incomplete records": look for rows where key columns are NULL
-
-====== GENERAL RULES ======
-- Adapt table and column names to EXACTLY match the schema above. The table might be called EMPLOYEES, EMPLOYEE, employee, etc. - use the EXACT name from the schema.
-- If a table is active/selected and the user doesn't mention a specific table, USE the active table.
-- For UPDATE/INSERT/DELETE, set queryType to "WRITE". For SELECT, set queryType to "SELECT".
-- NEVER ask "which table?" if there is an active table or the table is obvious from context.
-- For general knowledge questions, greetings, database concepts: respond with type "info".
-- Use ONLY columns that exist in the schema. Double-quote table/column names with special chars.
-- For SQLite: use UPPER() for case-insensitive comparisons, LIKE for pattern matching.
-- Minimize clarification questions. Prefer making a reasonable assumption over asking.
-- Always generate valid SQLite syntax (no TOP, no ISNULL - use IS NULL, IFNULL, COALESCE).
-- The "explanation" field should be a helpful natural language summary: describe what the query finds, not just restate the SQL. If the result might be empty, explain why (e.g., "No employees earn more than their manager in this dataset, which means the management salary structure is well-maintained.").
-
-OUTPUT ONLY THE JSON OBJECT:"""
+USER INPUT: "{user_query}"
+"""
 
     # ---- Fallback (no LLM available) ----
 

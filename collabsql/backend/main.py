@@ -373,18 +373,137 @@ async def get_database_schema(database_id: int, refresh: bool = False, current_u
 
 @api_app.get("/api/database/{database_id}/analytics")
 async def get_database_analytics(database_id: int, current_user: dict = Depends(get_current_user)):
+    # 1. Basic Schema Information
+    db_row = db_manager.get_system_row("SELECT file_path, name FROM databases WHERE id = ?", (database_id,))
+    if not db_row:
+        raise HTTPException(status_code=404, detail="Database not found")
+
     schema_row = db_manager.get_system_row(
         "SELECT schema_json FROM schema_cache WHERE database_id = ? ORDER BY cached_at DESC LIMIT 1",
         (database_id,)
     )
+    
     if not schema_row:
         return {"summary": {"tableCount": 0, "tables": []}}
     
     schema = json.loads(schema_row["schema_json"])
-    return {"summary": {
-        "tableCount": len(schema.get("tables", [])),
-        "tables": schema.get("tables", [])
-    }}
+    tables = schema.get("tables", [])
+    
+    # 2. Mutation Activity Distribution
+    mutation_stats = db_manager.get_system_rows(
+        "SELECT operation_type, COUNT(*) as count FROM commits WHERE database_id = ? GROUP BY operation_type",
+        (database_id,)
+    )
+    mutations = {
+        "INSERT": 0, "UPDATE": 0, "DELETE": 0, "ALTER": 0, "CREATE": 0, "DROP": 0
+    }
+    for row in mutation_stats:
+        op = row["operation_type"]
+        if op in mutations:
+            mutations[op] = row["count"]
+
+    # 3. Calculate Global Column Distribution
+    total_numeric = 0
+    total_text = 0
+    detailed_tables = []
+
+    import sqlite3
+    conn = sqlite3.connect(db_row["file_path"])
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    for table in tables:
+        table_name = table["name"]
+        row_count = table["rowCount"]
+        cols = table["columns"]
+        
+        table_stats = {
+            "name": table_name,
+            "rowCount": row_count,
+            "columnCount": len(cols),
+            "numericCount": 0,
+            "textCount": 0,
+            "avgNullPercent": 0,
+            "columns": [],
+            "numeric_stats": [],
+            "categorical_stats": []
+        }
+
+        null_sums = 0
+        
+        for col in cols:
+            col_name = col["name"]
+            col_type = col["type"].upper()
+            is_numeric = any(t in col_type for t in ["INT", "FLOAT", "DECIMAL", "NUMERIC", "REAL", "DOUBLE"])
+            
+            if is_numeric:
+                table_stats["numericCount"] += 1
+                total_numeric += 1
+            else:
+                table_stats["textCount"] += 1
+                total_text += 1
+
+            # Get distinct and Null info
+            try:
+                cursor.execute(f'SELECT COUNT(DISTINCT "{col_name}"), COUNT(*) - COUNT("{col_name}") FROM "{table_name}"')
+                row_res = cursor.fetchone()
+                distinct_count = row_res[0]
+                null_count = row_res[1]
+                null_percent = round((null_count / row_count * 100), 1) if row_count > 0 else 0
+                null_sums += null_percent
+                
+                table_stats["columns"].append({
+                    "name": col_name,
+                    "type": col_type,
+                    "distinct": distinct_count,
+                    "nullPercent": null_percent,
+                    "category": "Numeric" if is_numeric else "Text",
+                    "constraint": "PK" if col.get("primaryKey") else "-"
+                })
+
+                # Detailed Numeric Stats
+                if is_numeric and row_count > 0:
+                    cursor.execute(f'SELECT MIN("{col_name}"), MAX("{col_name}"), AVG("{col_name}"), SUM("{col_name}") FROM "{table_name}" WHERE "{col_name}" IS NOT NULL')
+                    num_res = cursor.fetchone()
+                    table_stats["numeric_stats"].append({
+                        "name": col_name,
+                        "min": num_res[0],
+                        "max": num_res[1],
+                        "avg": round(num_res[2], 2) if num_res[2] else 0,
+                        "sum": num_res[3],
+                        "distinct": distinct_count
+                    })
+                
+                # Detailed Categorical Stats
+                if not is_numeric and row_count > 0 and distinct_count > 0:
+                    cursor.execute(f'SELECT "{col_name}", COUNT(*) as freq FROM "{table_name}" GROUP BY "{col_name}" ORDER BY freq DESC LIMIT 5')
+                    top_vals = [dict(r) for r in cursor.fetchall()]
+                    table_stats["categorical_stats"].append({
+                        "name": col_name,
+                        "distinct": distinct_count,
+                        "top_values": top_vals
+                    })
+
+            except Exception as e:
+                print(f"Stats Error for {table_name}.{col_name}: {e}")
+
+        table_stats["avgNullPercent"] = round(null_sums / len(cols), 1) if cols else 0
+        detailed_tables.append(table_stats)
+
+    conn.close()
+
+    return {
+        "summary": {
+            "databaseName": db_row["name"],
+            "tableCount": len(tables),
+            "totalRows": sum(t["rowCount"] for t in tables),
+            "totalNumeric": total_numeric,
+            "totalText": total_text,
+            "mutations": mutations
+        },
+        "tables": detailed_tables,
+        "reportDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
 
 
 

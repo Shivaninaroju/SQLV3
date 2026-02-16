@@ -16,7 +16,7 @@ def check_api_key(api_key, index=None):
         
         # Try a simple test request
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-1.5-flash",
             contents="Say 'OK' if you can read this."
         )
         
