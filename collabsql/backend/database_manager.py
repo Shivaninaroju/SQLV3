@@ -77,7 +77,11 @@ class DatabaseManager:
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                email_verified INTEGER DEFAULT 0
+                email_verified INTEGER DEFAULT 0,
+                reset_token TEXT,
+                reset_token_expiry DATETIME,
+                otp TEXT,
+                otp_expiry DATETIME
             )
         """)
 

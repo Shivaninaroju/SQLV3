@@ -14,6 +14,11 @@ import bcrypt
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 import socketio
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import random
+import string
 
 from database_manager import db_manager
 from services.premium_nlp_service import premium_nlp_service
@@ -24,6 +29,50 @@ JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
 JWT_ALGORITHM = "HS256"
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads/databases")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# SMTP Configuration
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
+
+def send_email(to_email, subject, body):
+    if not SMTP_USER or not SMTP_PASS:
+        logging.warning(f"SMTP not configured. Email to {to_email} skipped. Body: {body}")
+        return False
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_USER
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        logging.error(f"SMTP Error: {e}")
+        return False
+
+def verify_gmail_credentials(email, password):
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(email, password)
+        server.quit()
+        return True, "Success"
+    except smtplib.SMTPAuthenticationError as e:
+        logging.error(f"Gmail Verification Error: {e}")
+        # Error 534 5.7.9 specifically means 2FA is on and an App Password is required
+        if b'5.7.9' in bytes(str(e), 'utf-8') or b'Application-specific password required' in bytes(str(e), 'utf-8'):
+            return False, "Google Security Block: Because you have 2-Step Verification enabled, Google requires an 'App Password' instead of your regular password for this step."
+        return False, "Security verification failed. Please check if your Gmail password is correct."
+    except Exception as e:
+        logging.error(f"Gmail Verification Error: {e}")
+        return False, "Verification failed. Please ensure you are using a valid Gmail account."
 
 api_app = FastAPI(title="CollabSQL API")
 
@@ -61,6 +110,17 @@ class SQLExecute(BaseModel):
     query: str
     isWrite: bool = False
 
+class GmailVerify(BaseModel):
+    email: EmailStr
+    password: str
+
+class ForgotPassword(BaseModel):
+    email: EmailStr
+
+class ResetPassword(BaseModel):
+    token: str
+    newPassword: str
+
 # Auth Middleware
 async def get_current_user(request: Request):
     auth_header = request.headers.get("Authorization")
@@ -79,12 +139,13 @@ async def get_current_user(request: Request):
 # --- AUTH ROUTES ---
 
 @api_app.post("/api/auth/register")
-async def register(user: UserRegister):
+def register(user: UserRegister):
     existing = db_manager.get_system_row("SELECT id FROM users WHERE email = ? OR username = ?", (user.email, user.username))
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
     
-    hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    # Using 10 rounds for better performance while maintaining high security
+    hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt(10)).decode('utf-8')
     result = db_manager.run_system_query(
         "INSERT INTO users (email, username, password_hash, email_verified) VALUES (?, ?, ?, 1)",
         (user.email, user.username, hashed_password)
@@ -99,8 +160,58 @@ async def register(user: UserRegister):
         "token": token
     }
 
+@api_app.post("/api/auth/verify-gmail")
+async def verify_gmail(data: GmailVerify):
+    if not data.email.endswith("@gmail.com"):
+        raise HTTPException(status_code=400, detail="Only Gmail addresses are supported for this verification step.")
+    
+    is_valid, message = verify_gmail_credentials(data.email, data.password)
+    if not is_valid:
+        raise HTTPException(status_code=401, detail=message)
+    
+    return {"message": "Gmail verified successfully"}
+
+@api_app.post("/api/auth/forgot-password")
+async def forgot_password(data: ForgotPassword):
+    user = db_manager.get_system_row("SELECT id FROM users WHERE email = ?", (data.email,))
+    if not user:
+        # Don't reveal if user exists for security, but return success
+        return {"message": "If an account exists with this email, a reset link has been sent."}
+    
+    token = ''.join(random.choices(string.ascii_letters + string.digits, k=40))
+    expiry = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    
+    db_manager.run_system_query(
+        "UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
+        (token, expiry, user["id"])
+    )
+    
+    reset_url = f"http://localhost:3000/auth?token={token}" # Adjust for production
+    body = f"Hello,\n\nPlease click the following link to reset your CollabSQL password:\n{reset_url}\n\nThis link expires in 1 hour."
+    
+    send_email(data.email, "Reset your CollabSQL Password", body)
+    
+    return {"message": "Reset instructions sent to your email."}
+
+@api_app.post("/api/auth/reset-password")
+def reset_password(data: ResetPassword):
+    user = db_manager.get_system_row(
+        "SELECT id FROM users WHERE reset_token = ? AND reset_token_expiry > CURRENT_TIMESTAMP",
+        (data.token,)
+    )
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    
+    hashed_password = bcrypt.hashpw(data.newPassword.encode('utf-8'), bcrypt.gensalt(10)).decode('utf-8')
+    db_manager.run_system_query(
+        "UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
+        (hashed_password, user["id"])
+    )
+    
+    return {"message": "Password reset successful. You can now log in."}
+
 @api_app.post("/api/auth/login")
-async def login(user_data: UserLogin):
+def login(user_data: UserLogin):
     user = db_manager.get_system_row("SELECT * FROM users WHERE email = ?", (user_data.email,))
     if not user or not bcrypt.checkpw(user_data.password.encode('utf-8'), user["password_hash"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -120,7 +231,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     return {"user": user}
 
 @api_app.get("/api/auth/verify")
-async def verify_token(current_user: dict = Depends(get_current_user)):
+def verify_token(current_user: dict = Depends(get_current_user)):
     user = db_manager.get_system_row("SELECT id, email, username FROM users WHERE id = ?", (current_user["userId"],))
     return {"valid": True, "user": user}
 
@@ -560,22 +671,24 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Schema not found")
 
     schema = json.loads(schema_row["schema_json"])
-    # Pass username for logging
+    # Pass username and database path for logging and feedback loop
     username = current_user.get("username", "anonymous")
+    db_row = db_manager.get_system_row("SELECT file_path FROM databases WHERE id = ?", (data.databaseId,))
+    db_path = db_row["file_path"] if db_row else None
     
     result = await premium_nlp_service.process_query(
         data.query,
         schema,
         data.conversationHistory,
         data.selectedTable,
-        username=username
+        username=username,
+        db_path=db_path
     )
 
     # EXECUTE AND RETRIEVE DATA if SQL was generated
     if result.get("type") == "sql" and result.get("query"):
         sql = result["query"]
-        db_row = db_manager.get_system_row("SELECT file_path FROM databases WHERE id = ?", (data.databaseId,))
-        
+        # Use existing db_row from above
         if db_row:
             try:
                 import sqlite3
@@ -589,13 +702,26 @@ async def query_nl(data: NLQuery, current_user: dict = Depends(get_current_user)
                 if is_read:
                     cursor.execute(sql)
                     rows = cursor.fetchall()
-                    result["result"] = [dict(r) for r in rows]
-                    print(f"\n[OK] DATA RETRIEVED: Found {len(result['result'])} records.")
+                    data = [dict(r) for r in rows]
+                    result["result"] = data
+                    
+                    # Update explanation with actual data summary to avoid "silent success"
+                    count = len(data)
+                    prefix = f"**[Result: Found {count} records]**\n\n" if count > 0 else "**[Result: No records found matching the criteria]**\n\n"
+                    result["explanation"] = prefix + (result.get("explanation") or "")
+                    
+                    if not data:
+                        print(f"\n[INFO] Query ran but returned no data.")
+                    else:
+                        print(f"\n[OK] DATA RETRIEVED: Found {len(data)} records.")
                 else:
                     cursor.execute(sql)
                     changes = conn.total_changes
                     conn.commit()
                     result["changes"] = changes
+                    
+                    # Update explanation for Write operations
+                    result["explanation"] = f"**[Result: Success, {changes} row(s) affected]**\n\n" + (result.get("explanation") or "")
                     print(f"\n[OK] DATABASE UPDATED: {changes} rows affected.")
                     
                     # Record commit
