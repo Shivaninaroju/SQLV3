@@ -1,277 +1,5 @@
 [
     {
-        "timestamp": "2026-02-14T11:07:01.548873",
-        "nl": "have you inserted?",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 814,
-            "response_tokens": 44,
-            "total_tokens": 979
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:07:15.909312",
-        "nl": "keep them null",
-        "sql": "INSERT INTO EMPLOYEE (FIRST_NAME) VALUES ('Sana')",
-        "tokens": {
-            "prompt_tokens": 840,
-            "response_tokens": 86,
-            "total_tokens": 2091
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:07:31.149796",
-        "nl": "show employee table",
-        "sql": "SELECT * FROM EMPLOYEE",
-        "tokens": {
-            "prompt_tokens": 866,
-            "response_tokens": 66,
-            "total_tokens": 979
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:15:19.011956",
-        "nl": "List employees whose salary is higher than their direct manager\u2019s salary.",
-        "sql": "SELECT E.FIRST_NAME, E.LAST_NAME, E.SALARY, M.FIRST_NAME AS MANAGER_FIRST_NAME, M.LAST_NAME AS MANAGER_LAST_NAME, M.SALARY AS MANAGER_SALARY FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.SALARY > M.SALARY",
-        "tokens": {
-            "prompt_tokens": 743,
-            "response_tokens": 175,
-            "total_tokens": 1047
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:20:44.429615",
-        "nl": "Employees Who Earn More Than Their Manager",
-        "sql": "SELECT E.FIRST_NAME, E.LAST_NAME, E.SALARY, M.FIRST_NAME AS MANAGER_FIRST_NAME, M.LAST_NAME AS MANAGER_LAST_NAME, M.SALARY AS MANAGER_SALARY FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.SALARY > M.SALARY",
-        "tokens": {
-            "prompt_tokens": 827,
-            "response_tokens": 169,
-            "total_tokens": 1322
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:21:20.320451",
-        "nl": "Managers Who Earn Less Than One of Their Direct Reports",
-        "sql": "SELECT M.FIRST_NAME, M.LAST_NAME, M.SALARY, E.FIRST_NAME AS REPORT_FIRST_NAME, E.LAST_NAME AS REPORT_LAST_NAME, E.SALARY AS REPORT_SALARY FROM EMPLOYEE AS M JOIN EMPLOYEE AS E ON M.EMPLOYEE_ID = E.MANAGER_ID WHERE M.SALARY < E.SALARY",
-        "tokens": {
-            "prompt_tokens": 908,
-            "response_tokens": 206,
-            "total_tokens": 1714
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:21:48.983521",
-        "nl": "Highest Paid Employee in Each Department",
-        "sql": "SELECT E.FIRST_NAME, E.LAST_NAME, E.SALARY, E.DEPARTMENT_ID FROM EMPLOYEE AS E JOIN (SELECT DEPARTMENT_ID, MAX(SALARY) AS MAX_SALARY FROM EMPLOYEE GROUP BY DEPARTMENT_ID) AS MaxSalaries ON E.DEPARTMENT_ID = MaxSalaries.DEPARTMENT_ID AND E.SALARY = MaxSalaries.MAX_SALARY",
-        "tokens": {
-            "prompt_tokens": 997,
-            "response_tokens": 176,
-            "total_tokens": 1748
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:22:10.503797",
-        "nl": "Department With Highest Total Salary Expense",
-        "sql": "SELECT DEPARTMENT_ID, SUM(SALARY) AS Total_Salary_Expense FROM EMPLOYEE GROUP BY DEPARTMENT_ID ORDER BY Total_Salary_Expense DESC LIMIT 1",
-        "tokens": {
-            "prompt_tokens": 1074,
-            "response_tokens": 114,
-            "total_tokens": 1409
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:22:54.843607",
-        "nl": "Employee With Longest Tenure",
-        "sql": "SELECT FIRST_NAME, LAST_NAME, HIRE_DATE FROM EMPLOYEE ORDER BY HIRE_DATE ASC LIMIT 1",
-        "tokens": {
-            "prompt_tokens": 992,
-            "response_tokens": 101,
-            "total_tokens": 1226
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:23:19.669677",
-        "nl": "Employees Hired Before Their Manager",
-        "sql": "SELECT E.FIRST_NAME AS EmployeeFirstName, E.LAST_NAME AS EmployeeLastName, E.HIRE_DATE AS EmployeeHireDate, M.FIRST_NAME AS ManagerFirstName, M.LAST_NAME AS ManagerLastName, M.HIRE_DATE AS ManagerHireDate FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.HIRE_DATE < M.HIRE_DATE",
-        "tokens": {
-            "prompt_tokens": 938,
-            "response_tokens": 170,
-            "total_tokens": 1364
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:23:39.693201",
-        "nl": "Employees Earning Above Company Average",
-        "sql": "SELECT FIRST_NAME, LAST_NAME, SALARY FROM EMPLOYEE WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEE)",
-        "tokens": {
-            "prompt_tokens": 1001,
-            "response_tokens": 105,
-            "total_tokens": 1253
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:24:00.569557",
-        "nl": "Manager With Most Direct Reports",
-        "sql": "SELECT M.FIRST_NAME, M.LAST_NAME, COUNT(E.EMPLOYEE_ID) AS NumberOfDirectReports FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID GROUP BY M.EMPLOYEE_ID, M.FIRST_NAME, M.LAST_NAME ORDER BY NumberOfDirectReports DESC LIMIT 1",
-        "tokens": {
-            "prompt_tokens": 928,
-            "response_tokens": 156,
-            "total_tokens": 1620
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:24:17.635952",
-        "nl": "Employees With Same Salary as Someone in Another Department",
-        "sql": "SELECT DISTINCT e1.FIRST_NAME, e1.LAST_NAME, e1.SALARY, e1.DEPARTMENT_ID FROM EMPLOYEE AS e1 JOIN EMPLOYEE AS e2 ON e1.SALARY = e2.SALARY AND e1.DEPARTMENT_ID != e2.DEPARTMENT_ID",
-        "tokens": {
-            "prompt_tokens": 1021,
-            "response_tokens": 131,
-            "total_tokens": 1532
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:24:41.919404",
-        "nl": "Records with NULL EMPLOYEE_ID:",
-        "sql": "SELECT * FROM EMPLOYEE WHERE EMPLOYEE_ID IS NULL",
-        "tokens": {
-            "prompt_tokens": 1026,
-            "response_tokens": 79,
-            "total_tokens": 1256
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:39:28.560414",
-        "nl": "Manager With Most Direct Reports",
-        "sql": "SELECT M.FIRST_NAME, M.LAST_NAME, COUNT(E.EMPLOYEE_ID) AS NumberOfDirectReports FROM EMPLOYEE AS E JOIN EMPLOYEE AS M ON E.MANAGER_ID = M.EMPLOYEE_ID WHERE E.MANAGER_ID IS NOT NULL GROUP BY M.EMPLOYEE_ID, M.FIRST_NAME, M.LAST_NAME ORDER BY NumberOfDirectReports DESC LIMIT 1",
-        "tokens": {
-            "prompt_tokens": 1945,
-            "response_tokens": 234,
-            "total_tokens": 2718
-        }
-    },
-    {
-        "timestamp": "2026-02-14T11:39:53.924976",
-        "nl": "Managers Who Earn Less Than One of Their Direct Reports",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": null
-    },
-    {
-        "timestamp": "2026-02-14T12:09:19.655762",
-        "nl": "Managers Who Earn Less Than One of Their Direct Reports",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": null
-    },
-    {
-        "timestamp": "2026-02-14T14:42:46.150373",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1719,
-            "response_tokens": 62,
-            "total_tokens": 1811
-        }
-    },
-    {
-        "timestamp": "2026-02-14T14:43:03.545462",
-        "nl": "hello",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1729,
-            "response_tokens": 35,
-            "total_tokens": 1790
-        }
-    },
-    {
-        "timestamp": "2026-02-14T14:51:40.669280",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1723,
-            "response_tokens": 61,
-            "total_tokens": 1816
-        }
-    },
-    {
-        "timestamp": "2026-02-14T14:54:49.673914",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1728,
-            "response_tokens": 32,
-            "total_tokens": 1797
-        }
-    },
-    {
-        "timestamp": "2026-02-14T14:58:51.526779",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1733,
-            "response_tokens": 35,
-            "total_tokens": 1797
-        }
-    },
-    {
-        "timestamp": "2026-02-14T15:01:27.797588",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1738,
-            "response_tokens": 32,
-            "total_tokens": 1797
-        }
-    },
-    {
-        "timestamp": "2026-02-14T15:02:01.231450",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1723,
-            "response_tokens": 35,
-            "total_tokens": 1784
-        }
-    },
-    {
-        "timestamp": "2026-02-14T17:18:32.118354",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1723,
-            "response_tokens": 48,
-            "total_tokens": 1804
-        }
-    },
-    {
-        "timestamp": "2026-02-14T17:23:24.839195",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1723,
-            "response_tokens": 47,
-            "total_tokens": 1806
-        }
-    },
-    {
-        "timestamp": "2026-02-14T17:23:46.428020",
-        "nl": "how many employees are there?",
-        "sql": "SELECT COUNT(EMPLOYEE_ID) FROM EMPLOYEE;",
-        "tokens": {
-            "prompt_tokens": 1761,
-            "response_tokens": 88,
-            "total_tokens": 2038
-        }
-    },
-    {
-        "timestamp": "2026-02-14T17:24:29.435089",
-        "nl": "number of employee names in the employee table",
-        "sql": "SELECT COUNT(DISTINCT FIRST_NAME || ' ' || LAST_NAME) FROM EMPLOYEE;",
-        "tokens": {
-            "prompt_tokens": 1833,
-            "response_tokens": 141,
-            "total_tokens": 3628
-        }
-    },
-    {
         "timestamp": "2026-02-14T17:53:32.298281",
         "nl": "hi",
         "sql": "N/A (Non-SQL response)",
@@ -810,6 +538,174 @@
     {
         "timestamp": "2026-02-16 23:04:49",
         "user_query": "sure",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 17:33:56",
+        "user_query": "How many rows are in EMPLOYEE?",
+        "sql_query": "SELECT COUNT(*) FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 17:34:01",
+        "user_query": "hi",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 17:34:08",
+        "user_query": "what is LLM?",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 17:34:13",
+        "user_query": "goog",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 18:34:00",
+        "user_query": "Show me all data from EMPLOYEE",
+        "sql_query": "SELECT * FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:11:17",
+        "user_query": "Show me all data from students",
+        "sql_query": "SELECT * FROM students",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:11:40",
+        "user_query": "how many number of students are there?",
+        "sql_query": "SELECT COUNT(StudentID) FROM students",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:15:26",
+        "user_query": "Show me all data from hospitals",
+        "sql_query": "SELECT * FROM hospitals",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:16:56",
+        "user_query": "how many records are there",
+        "sql_query": "SELECT COUNT(*) FROM hospitals",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:19:16",
+        "user_query": "how many facilities have highest hip knee value",
+        "sql_query": "SELECT COUNT(*) FROM hospitals WHERE UPPER(Procedure.Hip_Knee.Value) = UPPER('Higher')",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:35:10",
+        "user_query": "how many facilities have highest hip knee value",
+        "sql_query": "SELECT COUNT(*) FROM hospitals WHERE UPPER(Procedure.Hip_Knee.Value) = UPPER('Higher')",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:37:47",
+        "user_query": "How many rows are in students?",
+        "sql_query": "SELECT COUNT(*) FROM students",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:37:54",
+        "user_query": "show table",
+        "sql_query": "SELECT Name FROM sqlite_master WHERE TYPE='table'",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:38:07",
+        "user_query": "show student details",
+        "sql_query": "SELECT * FROM students",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:38:30",
+        "user_query": "who got highest gpa?",
+        "sql_query": "SELECT Name, GPA FROM students ORDER BY CAST(GPA AS NUMERIC) DESC LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:38:50",
+        "user_query": "who is younger?",
+        "sql_query": "SELECT Name FROM students ORDER BY CAST(Age AS NUMERIC) ASC LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:39:11",
+        "user_query": "who is older?",
+        "sql_query": "SELECT Name FROM students ORDER BY CAST(Age AS NUMERIC) DESC LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:39:19",
+        "user_query": "average gpa?",
+        "sql_query": "SELECT AVG(CAST(GPA AS NUMERIC)) FROM students",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:39:46",
+        "user_query": "how many students are there in Mathematics department?",
+        "sql_query": "SELECT COUNT(StudentID) FROM students WHERE UPPER(Department) = UPPER('Mathematics')",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:39:56",
+        "user_query": "no.of students in each department",
+        "sql_query": "SELECT Department, COUNT(StudentID) FROM students GROUP BY Department",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:41:34",
+        "user_query": "sort the students with their ids",
+        "sql_query": "SELECT * FROM students ORDER BY StudentID",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:44:31",
+        "user_query": "highest gpa students in each department in each year",
+        "sql_query": "SELECT Department, GraduationYear, Name, GPA\nFROM students\nWHERE (Department, GraduationYear, CAST(GPA AS NUMERIC)) IN (\n  SELECT Department, GraduationYear, MAX(CAST(GPA AS NUMERIC))\n  FROM students\n  GROUP BY Department, GraduationYear\n)\nORDER BY Department, GraduationYear;",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:45:07",
+        "user_query": "average gpa of each department in each year",
+        "sql_query": "SELECT Department, GraduationYear, AVG(CAST(GPA AS NUMERIC)) AS AverageGPA FROM students GROUP BY Department, GraduationYear",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:45:18",
+        "user_query": "thank you",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:45:25",
+        "user_query": "you are performing well",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:45:33",
+        "user_query": "gud night",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:47:20",
+        "user_query": "how many students have graduated in each year",
+        "sql_query": "SELECT GraduationYear, COUNT(StudentID) FROM students GROUP BY GraduationYear",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 22:48:37",
+        "user_query": "is there any constraints applied to the database?",
         "sql_query": null,
         "engine": "LLaMA-3.3-70B"
     }

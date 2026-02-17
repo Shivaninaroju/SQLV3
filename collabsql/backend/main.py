@@ -367,11 +367,28 @@ async def upload_database(name: str = Form(...), file: UploadFile = File(...), c
 
 @api_app.get("/api/database/list")
 async def list_databases(current_user: dict = Depends(get_current_user)):
-    databases = db_manager.get_system_rows(
-        "SELECT * FROM databases WHERE owner_id = ?",
+    # Get databases owned by the user
+    own_databases = db_manager.get_system_rows(
+        "SELECT *, 'owner' as user_role FROM databases WHERE owner_id = ?",
         (current_user["userId"],)
     )
-    return {"databases": databases}
+    
+    # Get databases where the user is a collaborator but NOT the owner
+    collaborated_databases = db_manager.get_system_rows(
+        """
+        SELECT d.*, dp.permission_level as user_role, u.username as owner_username
+        FROM databases d
+        JOIN database_permissions dp ON d.id = dp.database_id
+        JOIN users u ON d.owner_id = u.id
+        WHERE dp.user_id = ? AND d.owner_id != ?
+        """,
+        (current_user["userId"], current_user["userId"])
+    )
+    
+    return {
+        "databases": own_databases,
+        "collaborated": collaborated_databases
+    }
 
 
 def _extract_schema(file_path: str) -> dict:
@@ -437,13 +454,18 @@ async def get_database_details(database_id: int, current_user: dict = Depends(ge
     )
 
     # Determine user permission
-    user_permission = "owner" if db["owner_id"] == current_user["userId"] else "viewer"
-    perm_row = db_manager.get_system_row(
-        "SELECT permission_level FROM database_permissions WHERE database_id = ? AND user_id = ?",
-        (database_id, current_user["userId"])
-    )
-    if perm_row:
-        user_permission = perm_row["permission_level"]
+    user_permission = None
+    if db["owner_id"] == current_user["userId"]:
+        user_permission = "owner"
+    else:
+        perm_row = db_manager.get_system_row(
+            "SELECT permission_level FROM database_permissions WHERE database_id = ? AND user_id = ?",
+            (database_id, current_user["userId"])
+        )
+        if perm_row:
+            user_permission = perm_row["permission_level"]
+        else:
+            raise HTTPException(status_code=403, detail="You do not have permission to access this database")
 
     return {
         "database": {
