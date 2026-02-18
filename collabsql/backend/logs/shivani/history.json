@@ -1,189 +1,5 @@
 [
     {
-        "timestamp": "2026-02-14T21:40:22.994778",
-        "nl": "Show me all data from EMPLOYEE",
-        "sql": "SELECT * FROM EMPLOYEE",
-        "tokens": {
-            "prompt_tokens": 1729,
-            "response_tokens": 81,
-            "total_tokens": 1927
-        }
-    },
-    {
-        "timestamp": "2026-02-14T21:40:36.886699",
-        "nl": "Hello",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1786,
-            "response_tokens": 38,
-            "total_tokens": 1867
-        }
-    },
-    {
-        "timestamp": "2026-02-14T21:40:53.051561",
-        "nl": "i want to know about Shiva Prasad Naroju",
-        "sql": "SELECT * FROM EMPLOYEE WHERE FIRST_NAME = 'Shiva Prasad' AND LAST_NAME = 'Naroju'",
-        "tokens": {
-            "prompt_tokens": 1804,
-            "response_tokens": 124,
-            "total_tokens": 2842
-        }
-    },
-    {
-        "timestamp": "2026-02-14T21:40:57.546302",
-        "nl": "asdfsa",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1891,
-            "response_tokens": 38,
-            "total_tokens": 1988
-        }
-    },
-    {
-        "timestamp": "2026-02-14T21:41:05.028625",
-        "nl": "asfd",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1857,
-            "response_tokens": 38,
-            "total_tokens": 2036
-        }
-    },
-    {
-        "timestamp": "2026-02-14T21:41:14.298528",
-        "nl": "adf",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1858,
-            "response_tokens": 38,
-            "total_tokens": 1983
-        }
-    },
-    {
-        "timestamp": "2026-02-14T22:31:57.374657",
-        "nl": "What are the column names in EMPLOYEE?",
-        "sql": "PRAGMA table_info(EMPLOYEE);",
-        "tokens": {
-            "prompt_tokens": 1737,
-            "response_tokens": 114,
-            "total_tokens": 2254
-        }
-    },
-    {
-        "timestamp": "2026-02-14T22:37:12.999286",
-        "nl": "What are the column names in EMPLOYEE?",
-        "sql": "PRAGMA table_info(EMPLOYEE);",
-        "tokens": {
-            "prompt_tokens": 1758,
-            "response_tokens": 108,
-            "total_tokens": 1937
-        }
-    },
-    {
-        "timestamp": "2026-02-16T11:22:35.708030",
-        "nl": "Show me all data from EMPLOYEE",
-        "sql": "SELECT * FROM EMPLOYEE",
-        "tokens": {
-            "prompt_tokens": 1729,
-            "response_tokens": 80,
-            "total_tokens": 1942
-        }
-    },
-    {
-        "timestamp": "2026-02-16T11:26:00.125038",
-        "nl": "Show me all data from HOSPITAL",
-        "sql": "SELECT * FROM HOSPITAL",
-        "tokens": {
-            "prompt_tokens": 1790,
-            "response_tokens": 79,
-            "total_tokens": 1962
-        }
-    },
-    {
-        "timestamp": "2026-02-16T20:05:28.498940",
-        "nl": "What are the column names in EMPLOYEE?",
-        "sql": "N/A (Non-SQL response)",
-        "api_key": "Key #5 (AIzaSy...LKbg)",
-        "usage": {
-            "current_query": null,
-            "total_used_till_now": 165425,
-            "estimated_remaining": 834575
-        }
-    },
-    {
-        "timestamp": "2026-02-16T20:07:04.416825",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "api_key": "Key #5 (AIzaSy...LKbg)",
-        "usage": {
-            "current_query": null,
-            "total_used_till_now": 165425,
-            "estimated_remaining": 834575
-        }
-    },
-    {
-        "timestamp": "2026-02-16T20:09:53.766705",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "api_key": "Key #2 (AIzaSy...SDmM)",
-        "usage": {
-            "current_query": null,
-            "total_used_till_now": 330850,
-            "estimated_remaining": 669150
-        }
-    },
-    {
-        "timestamp": "2026-02-16T20:17:00.955096",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "api_key": "Key #2 (AIzaSy...SDmM)",
-        "usage": {
-            "current_query": null,
-            "total_used_till_now": 661700,
-            "estimated_remaining": 338300
-        }
-    },
-    {
-        "timestamp": "2026-02-16T20:24:18.579183",
-        "nl": "What are the column names in EMPLOYEE?",
-        "sql": "N/A (Non-SQL response)",
-        "api_key": "Key #5 (AIzaSy...LKbg)",
-        "usage": {
-            "current_query": null,
-            "total_used_till_now": 1323400,
-            "estimated_remaining": 0
-        }
-    },
-    {
-        "timestamp": "2026-02-16T20:26:10.162603",
-        "nl": "What are the column names in EMPLOYEE?",
-        "sql": "N/A (Non-SQL response)",
-        "api_key": "Key #5 (AIzaSy...LKbg)",
-        "usage": {
-            "current_query": null,
-            "total_used_till_now": 2646800,
-            "estimated_remaining": 0
-        }
-    },
-    {
-        "timestamp": "2026-02-16 22:15:56",
-        "user_query": "hi",
-        "sql_query": null,
-        "engine": "LLaMA-3.3-70B"
-    },
-    {
-        "timestamp": "2026-02-16 22:16:09",
-        "user_query": "what is AI?",
-        "sql_query": null,
-        "engine": "LLaMA-3.3-70B"
-    },
-    {
-        "timestamp": "2026-02-16 22:16:37",
-        "user_query": "What are tables there in this database?",
-        "sql_query": "SELECT name \nFROM sqlite_master \nWHERE type='table';",
-        "engine": "LLaMA-3.3-70B"
-    },
-    {
         "timestamp": "2026-02-16 22:16:55",
         "user_query": "show employee table",
         "sql_query": "SELECT * FROM EMPLOYEE;",
@@ -667,6 +483,120 @@
         "timestamp": "2026-02-18 11:19:55",
         "user_query": "Show me all data from EMPLOYEE",
         "sql_query": "SELECT * FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:28:27",
+        "user_query": "Show me all data from EMPLOYEE",
+        "sql_query": "SELECT * FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:28:40",
+        "user_query": "hi",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:29:01",
+        "user_query": "who is financially well as per the above table",
+        "sql_query": "SELECT * FROM EMPLOYEE WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEE)",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:29:28",
+        "user_query": "name only one employee",
+        "sql_query": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:30:17",
+        "user_query": "name only one employee who is financially well",
+        "sql_query": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEE) LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:32:03",
+        "user_query": "name only one employee who is highly financially well",
+        "sql_query": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEE) LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:32:25",
+        "user_query": "name only one employee who is highly financially well compared to all employees",
+        "sql_query": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE WHERE SALARY > (SELECT AVG(SALARY) FROM EMPLOYEE) ORDER BY SALARY DESC LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:33:08",
+        "user_query": "average salary of all employees",
+        "sql_query": "SELECT AVG(SALARY) FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:33:15",
+        "user_query": "who has least salary",
+        "sql_query": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE ORDER BY SALARY ASC LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:33:31",
+        "user_query": "only one emploee?are you sure?",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:34:46",
+        "user_query": "is there only one employee with least salary?",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:35:09",
+        "user_query": "from the above employee database tell me",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:35:36",
+        "user_query": "from the above employee database tell me is there only one employee with least salary?",
+        "sql_query": "SELECT COUNT(*) FROM EMPLOYEE WHERE SALARY = (SELECT MIN(SALARY) FROM EMPLOYEE)",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:36:05",
+        "user_query": "show employee table",
+        "sql_query": "SELECT * FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:37:06",
+        "user_query": "how many null employee records are there?",
+        "sql_query": "SELECT COUNT(*) FROM EMPLOYEE WHERE EMPLOYEE_ID IS NULL",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:37:11",
+        "user_query": "show the,",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:37:16",
+        "user_query": "show them",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:56:14",
+        "user_query": "top 10 earners in the employee table",
+        "sql_query": "SELECT * FROM EMPLOYEE ORDER BY SALARY DESC LIMIT 10",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 14:56:34",
+        "user_query": "show only their names",
+        "sql_query": "SELECT FIRST_NAME, LAST_NAME FROM EMPLOYEE ORDER BY SALARY DESC LIMIT 10",
         "engine": "LLaMA-3.3-70B"
     }
 ]
