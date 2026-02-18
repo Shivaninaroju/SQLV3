@@ -894,8 +894,8 @@ async def add_collaborator(database_id: int, data: dict = Body(...), current_use
         raise HTTPException(status_code=404, detail="User not found")
 
     db_manager.run_system_query(
-        "INSERT OR REPLACE INTO database_permissions (database_id, user_id, permission_level) VALUES (?, ?, ?)",
-        (database_id, user["id"], data.get("permissionLevel", "viewer"))
+        "INSERT OR REPLACE INTO database_permissions (database_id, user_id, permission_level, granted_by) VALUES (?, ?, ?, ?)",
+        (database_id, user["id"], data.get("permissionLevel", "viewer"), current_user["userId"])
     )
     return {"message": "Collaborator added"}
 

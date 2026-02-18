@@ -27,12 +27,12 @@ class DatabaseManager:
         os.makedirs("./uploads/databases", exist_ok=True)
 
     def get_system_db(self):
-        conn = sqlite3.connect(self.system_db_path)
+        conn = sqlite3.connect(self.system_db_path, timeout=20.0)
         conn.row_factory = sqlite3.Row
         return conn
 
     def get_user_db(self, db_path):
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=20.0)
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -66,8 +66,10 @@ class DatabaseManager:
         conn = self.get_system_db()
         cursor = conn.cursor()
         
-        # Enable Foreign Keys
+        # Database Optimization
         cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute("PRAGMA synchronous = NORMAL")
 
         # Users
         cursor.execute("""
@@ -105,9 +107,11 @@ class DatabaseManager:
                 database_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
                 permission_level TEXT NOT NULL CHECK(permission_level IN ('owner', 'editor', 'viewer')),
+                granted_by INTEGER NOT NULL,
                 granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (database_id) REFERENCES databases(id) ON DELETE CASCADE,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (granted_by) REFERENCES users(id),
                 UNIQUE(database_id, user_id)
             )
         """)

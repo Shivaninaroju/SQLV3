@@ -1,105 +1,5 @@
 [
     {
-        "timestamp": "2026-02-14T17:53:32.298281",
-        "nl": "hi",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1755,
-            "response_tokens": 27,
-            "total_tokens": 1811
-        }
-    },
-    {
-        "timestamp": "2026-02-14T18:36:15.232776",
-        "nl": "Show me all data from EMPLOYEE",
-        "sql": "SELECT * FROM EMPLOYEE",
-        "tokens": {
-            "prompt_tokens": 1725,
-            "response_tokens": 80,
-            "total_tokens": 1926
-        }
-    },
-    {
-        "timestamp": "2026-02-14T18:36:49.380937",
-        "nl": "Show me all data from EMPLOYEE",
-        "sql": "SELECT * FROM EMPLOYEE",
-        "tokens": {
-            "prompt_tokens": 1746,
-            "response_tokens": 81,
-            "total_tokens": 1974
-        }
-    },
-    {
-        "timestamp": "2026-02-14T18:47:57.679939",
-        "nl": "How many rows are in EMPLOYEE?",
-        "sql": "SELECT COUNT(*) FROM EMPLOYEE;",
-        "tokens": {
-            "prompt_tokens": 1746,
-            "response_tokens": 80,
-            "total_tokens": 1897
-        }
-    },
-    {
-        "timestamp": "2026-02-14T18:52:52.880242",
-        "nl": "Show me all data from EMPLOYEE",
-        "sql": "SELECT * FROM EMPLOYEE;",
-        "tokens": {
-            "prompt_tokens": 1753,
-            "response_tokens": 83,
-            "total_tokens": 1918
-        }
-    },
-    {
-        "timestamp": "2026-02-14T18:56:36.375458",
-        "nl": "How many rows are in EMPLOYEE?",
-        "sql": "SELECT COUNT(*) FROM EMPLOYEE;",
-        "tokens": {
-            "prompt_tokens": 1747,
-            "response_tokens": 83,
-            "total_tokens": 1912
-        }
-    },
-    {
-        "timestamp": "2026-02-14T18:59:05.972033",
-        "nl": "h",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1787,
-            "response_tokens": 36,
-            "total_tokens": 1939
-        }
-    },
-    {
-        "timestamp": "2026-02-14T18:59:11.977701",
-        "nl": "hello",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1790,
-            "response_tokens": 39,
-            "total_tokens": 1855
-        }
-    },
-    {
-        "timestamp": "2026-02-14T19:25:46.964174",
-        "nl": "Show me all data from EMPLOYEE",
-        "sql": "SELECT * FROM EMPLOYEE",
-        "tokens": {
-            "prompt_tokens": 1735,
-            "response_tokens": 83,
-            "total_tokens": 1858
-        }
-    },
-    {
-        "timestamp": "2026-02-14T19:26:12.583134",
-        "nl": "hello",
-        "sql": "N/A (Non-SQL response)",
-        "tokens": {
-            "prompt_tokens": 1788,
-            "response_tokens": 46,
-            "total_tokens": 1878
-        }
-    },
-    {
         "timestamp": "2026-02-14T21:40:22.994778",
         "nl": "Show me all data from EMPLOYEE",
         "sql": "SELECT * FROM EMPLOYEE",
@@ -707,6 +607,66 @@
         "timestamp": "2026-02-17 22:48:37",
         "user_query": "is there any constraints applied to the database?",
         "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 23:10:44",
+        "user_query": "How many rows are in EMPLOYEE?",
+        "sql_query": "SELECT COUNT(*) FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 23:24:46",
+        "user_query": "Show me all data from EMPLOYEE",
+        "sql_query": "SELECT * FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 23:25:09",
+        "user_query": "Insert employee name with \"Shreya\"",
+        "sql_query": "INSERT INTO EMPLOYEE (FIRST_NAME, LAST_NAME, EMAIL, PHONE_NUMBER, HIRE_DATE, JOB_ID, SALARY, COMMISSION_PCT, MANAGER_ID, DEPARTMENT_ID) VALUES ('Shreya', '', '', '', '', '', 0, '', '', 0)",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 23:25:17",
+        "user_query": "show employee table",
+        "sql_query": "SELECT * FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 23:25:33",
+        "user_query": "number of employees",
+        "sql_query": "SELECT COUNT(EMPLOYEE_ID) FROM EMPLOYEE",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-17 23:25:49",
+        "user_query": "employee with highest salary",
+        "sql_query": "SELECT * FROM EMPLOYEE ORDER BY SALARY DESC LIMIT 1",
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 10:43:11",
+        "user_query": "hi",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 10:43:16",
+        "user_query": "congrats",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 10:43:27",
+        "user_query": "no",
+        "sql_query": null,
+        "engine": "LLaMA-3.3-70B"
+    },
+    {
+        "timestamp": "2026-02-18 11:19:55",
+        "user_query": "Show me all data from EMPLOYEE",
+        "sql_query": "SELECT * FROM EMPLOYEE",
         "engine": "LLaMA-3.3-70B"
     }
 ]
